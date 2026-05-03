@@ -1,14 +1,19 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-    // Default 10 MB cap on the proxy/middleware request body would truncate
-    // larger audio uploads before the Server Action ever sees them, manifesting
-    // as a multipart "Unexpected end of form" error.
-    proxyClientMaxBodySize: '100mb',
     experimental: {
+        // Audio recordings can be tens of megabytes. Two stacked Next 16 caps
+        // need to be lifted from their defaults; both also have to live under
+        // `experimental` for this Next 16.0.7 runtime schema to accept them.
+        // See docs/decisions.md for the full ladder.
+        //
+        // 1) Proxy/middleware buffer cap (default 10 MB) — without this,
+        //    larger uploads get truncated and parse as
+        //    "Unexpected end of form".
+        proxyClientMaxBodySize: '100mb',
         serverActions: {
-            // Audio recordings can be tens of megabytes. Matches the 100 MB
-            // ceiling enforced inside `uploadConversation`.
+            // 2) Server Action body cap (default 1 MB) — matches the action's
+            //    own MAX_BYTES validation.
             bodySizeLimit: '100mb',
         },
     },

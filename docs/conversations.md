@@ -34,8 +34,12 @@ audio uploads — both are configured in `next.config.ts`:
 
 | Setting | Default | Set to | Why |
 |---|---|---|---|
-| `proxyClientMaxBodySize` | 10 MB | `100mb` | Cap on the proxy/middleware buffer. Defaults truncate the multipart stream → "Unexpected end of form". |
+| `experimental.proxyClientMaxBodySize` | 10 MB | `100mb` | Cap on the proxy/middleware buffer. Defaults truncate the multipart stream → "Unexpected end of form". |
 | `experimental.serverActions.bodySizeLimit` | 1 MB | `100mb` | Server Action body cap. Below this, the action fails with "Body exceeded 1 MB limit". |
+
+Both caps must live **under `experimental`** for the Next 16.0.7 runtime
+config schema to accept them — the type defs expose them at top level too,
+but the runtime rejects that placement with "Unrecognized key in object".
 
 Both match the action's own `MAX_BYTES = 100 MB` validation, so the
 three limits stay in sync. See
