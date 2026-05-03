@@ -52,23 +52,52 @@ See [[conversations#body-size-limit]].
 
 ---
 
-## Inline AI pipeline (no queue)
+## Background pipeline via `after()` plus Supabase Realtime
 
-**Decision:** `uploadConversation` runs Deepgram → Azure OpenAI synchronously
-inside the server action. The user waits ~15–30s for a 2–3 min call.
+**Decision:** The upload server action streams the file to storage,
+inserts the row with `status='transcribing'`, then schedules
+transcription + analysis with `after()` from `next/server` and returns.
+A client component (`ConversationsRealtime`) mounted in
+`(app)/layout.tsx` subscribes to `postgres_changes` on
+`public.conversations` filtered by the current user and calls
+`router.refresh()` (debounced) on every row change.
 
-**Why:** Simplicity for a 6-hour MVP. A queue (e.g. Supabase realtime + an
-edge function or external worker) would require a polling/realtime
-subscription path on the detail page and a way to trigger background work
-that survives serverless function termination. Not worth it for the case
-study; trivial to re-architect later.
+**Why:** The user shouldn't be locked into the upload form for 15–30s
+of network + AI calls they didn't ask to wait for. With this split:
+- Foreground stays short (just bytes → storage, a few seconds)
+- The dialog closes and the user can start another upload, navigate,
+  or just wait — their choice
+- Realtime makes status changes visible immediately on whatever page
+  they're on, no manual refresh, no polling
 
-**How to evolve:** kick the analysis off with `after()` (Next 16) or via a
-fetch to a route handler that uses `waitUntil`, set `status='analyzing'`,
-let the detail page (already auto-refreshing while processing) pick up the
-update. Better still, use Supabase realtime instead of polling.
+**Why both `after()` and Realtime?** `after()` lets us run the pipeline
+without a separate worker process, queue, or webhook. Realtime makes
+the UI react to the resulting row updates. Together they replace the
+"inline + polling" pattern we had before with no new infrastructure.
 
-See [[conversations]], [[ai-pipeline]].
+**Cost / caveats:**
+- `after()` runs in the same Node process as the request. In dev that
+  means our `pnpm dev` keeps it alive. On a serverless host the
+  function instance is kept warm until `after()` callbacks complete,
+  which is fine for our ~30s pipelines but won't scale to multi-minute
+  jobs (those want a real queue).
+- The audio bytes (`arrayBuffer`) stay in memory until the `after()`
+  callback finishes. For 100 MB uploads that's a real footprint.
+  Future optimization: download the file from storage inside the
+  background callback rather than holding it in the closure.
+- The Supabase server client created in the foreground request is
+  reused inside `after()`. Its in-memory JWT is still valid; cookie
+  context isn't re-entered (we only do row updates, not auth).
+- `replica identity full` is required on `public.conversations` so
+  `UPDATE` events carry enough columns for the per-user filter to work
+  (see [[database#realtime]]).
+
+**How to evolve further:** if pipelines need to outlive a single Node
+process or run in parallel at scale, lift them out of `after()` into a
+dedicated queue (Supabase queues, Inngest, Trigger.dev, etc). The
+realtime subscription on the frontend doesn't change.
+
+See [[conversations]], [[ai-pipeline]], [[architecture]].
 
 ---
 

@@ -6,6 +6,34 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Background pipeline + realtime status updates
+
+The upload action no longer blocks the user on transcription + analysis.
+Foreground work is just `validate → insert row → upload bytes → set
+status='transcribing' → return`; transcription and analysis run via
+`after()` from `next/server` after the response is sent. A new
+`ConversationsRealtime` client component subscribes to
+`postgres_changes` on `public.conversations` (filtered by `created_by`)
+and triggers `router.refresh()` on every change, so list and detail
+views update live as the background pipeline progresses.
+
+Side effects:
+
+- Upload dialog closes immediately on success and toasts a "View"
+  action — user can start another upload or navigate freely while
+  analysis runs.
+- Removed `app/(app)/conversations/[id]/processing-refresh.tsx` (the
+  former polling component); realtime replaces it.
+- New migration `20260503141450_enable_realtime_conversations.sql`
+  adds the table to `supabase_realtime` and sets `replica identity
+  full`.
+
+See [[decisions#background-pipeline-via-after-plus-supabase-realtime]],
+[[conversations#realtime-status-updates]],
+[[database#realtime]], and [[architecture#foreground-vs-background-work-in-uploadconversation]].
+
+---
+
 ## 2026-05-03 — Move proxy body cap under `experimental` (it was being silently rejected)
 
 Previous commit set `proxyClientMaxBodySize` at the top of

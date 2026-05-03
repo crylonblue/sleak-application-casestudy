@@ -1,5 +1,6 @@
 'use server'
 
+import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/data-access/auth'
@@ -7,7 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { transcribeAudio } from '@/lib/ai/transcribe'
 import { analyzeTranscript } from '@/lib/ai/analyze'
 
-export type UploadResult = { error: string } | undefined
+export type UploadResult = { error: string } | { conversationId: string } | undefined
 
 const ALLOWED_MIME = new Set([
     'audio/mpeg',
@@ -41,6 +42,13 @@ function extensionFor(mime: string, filename: string) {
     return map[mime] ?? 'audio'
 }
 
+/**
+ * Upload action — returns as soon as the file is in storage and the row is
+ * created. Transcription + analysis run via `after()` so the response goes
+ * back to the client immediately and the user can keep working (start
+ * another upload, navigate away, etc). The list/detail pages subscribe to
+ * Supabase Realtime to surface the post-response status updates.
+ */
 export async function uploadConversation(_prev: UploadResult, formData: FormData): Promise<UploadResult> {
     const user = await requireUser()
     const file = formData.get('file')
@@ -79,12 +87,15 @@ export async function uploadConversation(_prev: UploadResult, formData: FormData
     const conversationId = row.id as string
     const ext = extensionFor(file.type, file.name)
     const path = `${user.id}/${conversationId}.${ext}`
+    const mimeType = file.type
 
-    // 2) Upload audio to the private storage bucket.
+    // 2) Upload audio to the private storage bucket. This is the blocking
+    //    work the user has to wait on; everything after `after()` runs
+    //    post-response.
     const arrayBuffer = await file.arrayBuffer()
     const { error: uploadError } = await supabase.storage
         .from('recordings')
-        .upload(path, arrayBuffer, { contentType: file.type, upsert: false })
+        .upload(path, arrayBuffer, { contentType: mimeType, upsert: false })
 
     if (uploadError) {
         await supabase.from('conversations').delete().eq('id', conversationId)
@@ -96,31 +107,36 @@ export async function uploadConversation(_prev: UploadResult, formData: FormData
         .update({ recording_path: path, status: 'transcribing' })
         .eq('id', conversationId)
 
-    // 3) Transcribe + analyze inline. For an MVP this keeps the flow simple;
-    //    a production version would push this into a queue with realtime status.
-    try {
-        const audio = Buffer.from(arrayBuffer)
-        const { transcript, durationSeconds } = await transcribeAudio(audio, file.type)
+    // 3) Schedule transcription + analysis to run after the response is
+    //    sent. The arrayBuffer stays in the closure (fine for MVP); for a
+    //    leaner footprint we'd download it back from storage instead.
+    after(async () => {
+        try {
+            const audio = Buffer.from(arrayBuffer)
+            const { transcript, durationSeconds } = await transcribeAudio(audio, mimeType)
 
-        await supabase
-            .from('conversations')
-            .update({ transcript, duration_seconds: durationSeconds, status: 'analyzing' })
-            .eq('id', conversationId)
+            await supabase
+                .from('conversations')
+                .update({ transcript, duration_seconds: durationSeconds, status: 'analyzing' })
+                .eq('id', conversationId)
 
-        const analysis = await analyzeTranscript(transcript)
+            const analysis = await analyzeTranscript(transcript)
 
-        await supabase
-            .from('conversations')
-            .update({ analysis, status: 'ready', error: null })
-            .eq('id', conversationId)
-    } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error'
-        await supabase.from('conversations').update({ status: 'failed', error: message }).eq('id', conversationId)
-    }
+            await supabase
+                .from('conversations')
+                .update({ analysis, status: 'ready', error: null })
+                .eq('id', conversationId)
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unknown error'
+            await supabase
+                .from('conversations')
+                .update({ status: 'failed', error: message })
+                .eq('id', conversationId)
+        }
+    })
 
     revalidatePath('/conversations')
-    revalidatePath(`/conversations/${conversationId}`)
-    redirect(`/conversations/${conversationId}`)
+    return { conversationId }
 }
 
 export async function renameConversation(id: string, formData: FormData) {

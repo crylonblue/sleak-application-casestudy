@@ -8,7 +8,6 @@ import { feedbackSchema } from '@/lib/ai/feedback-schema'
 import { getOwnConversation, getRecordingSignedUrl } from '@/lib/data-access/conversations'
 import { ConversationActions } from './conversation-actions'
 import { FeedbackView } from './feedback-view'
-import { ProcessingRefresh } from './processing-refresh'
 
 function formatDuration(seconds: number | null) {
     if (seconds == null) return null
@@ -36,7 +35,6 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                     { title: conversation.title },
                 ]}
             />
-            {isProcessing(conversation.status) && <ProcessingRefresh />}
             <main className="@container/main flex flex-1 flex-col gap-2">
                 <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 lg:px-6">
                     <header className="flex flex-wrap items-start justify-between gap-4">

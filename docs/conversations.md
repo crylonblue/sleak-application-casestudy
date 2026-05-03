@@ -4,9 +4,11 @@ The core feature: upload an audio file → get a structured coaching review.
 
 ## Upload flow
 
-`uploadConversation` in `app/(app)/conversations/actions.ts`:
+`uploadConversation` in `app/(app)/conversations/actions.ts` splits into
+a fast foreground phase and a background phase:
 
 ```
+[foreground — user waits on this]
 1. requireUser()                       — auth gate
 2. validate file (mime + size ≤ 100MB) — early rejection
 3. INSERT conversations (status='pending')
@@ -14,17 +16,23 @@ The core feature: upload an audio file → get a structured coaching review.
 4. upload to recordings/<user_id>/<id>.<ext>
    → on failure, delete the row and return error
 5. UPDATE status='transcribing', recording_path=...
-6. transcribe (Deepgram)               — see [[ai-pipeline]]
-7. UPDATE status='analyzing', transcript, duration_seconds
-8. analyze (Azure OpenAI structured)   — see [[ai-pipeline]]
-9. UPDATE status='ready', analysis, error=null
-   (any thrown error → status='failed', error=message)
-10. revalidatePath + redirect to /conversations/<id>
+6. revalidatePath('/conversations')
+7. return { conversationId }            — dialog closes, toast shown
+
+[background — runs after the response, scheduled with `after()`]
+8. transcribe (Deepgram)               — see [[ai-pipeline]]
+9. UPDATE status='analyzing', transcript, duration_seconds
+10. analyze (Azure OpenAI structured)  — see [[ai-pipeline]]
+11. UPDATE status='ready', analysis, error=null
+    (any thrown error → status='failed', error=message)
 ```
 
-Steps 6–8 happen inline inside the server action. The user's form sits in
-its pending state for ~15–30s on a typical 2–3 minute call. See
-[[decisions]] for why this isn't a queue yet.
+The user only blocks on steps 1–7 (typically a few seconds while the file
+streams to storage). Steps 8–11 run via `after()` from `next/server`
+*after* the action's response is sent — the user is free to start
+another upload, navigate elsewhere, or close the dialog. List and detail
+pages update in realtime as the background updates land — see
+[[#realtime-status-updates]] below and [[decisions#background-pipeline-via-after-plus-supabase-realtime]].
 
 ### Body size limit
 
@@ -57,8 +65,25 @@ pending → transcribing → analyzing → ready
 
 Status badges live in `components/ui/status-badge.tsx`. Anything in the
 "processing" set (`pending`, `transcribing`, `analyzing`) shows a spinner;
-`isProcessing(status)` is exported for the detail page to decide whether to
-mount [[#auto-refresh]].
+`isProcessing(status)` is exported for callers that want to render a
+"still working" affordance.
+
+## Realtime status updates
+
+`components/realtime/conversations-realtime.tsx` is a tiny client
+component mounted once in `app/(app)/layout.tsx`. It subscribes to
+`postgres_changes` on `public.conversations` filtered by
+`created_by=eq.<user_id>` and calls `router.refresh()` (debounced ~250ms)
+whenever a row changes. Server components re-render with the latest data
+without a full reload.
+
+This is what makes the background pipeline visible: the user uploads, the
+dialog closes, the new row shows up with `status='transcribing'`, and the
+badge transitions through `analyzing` → `ready` (or `failed`) on its own.
+
+Realtime requires the `conversations` table to be added to
+`supabase_realtime` and to have `replica identity full` — both done in a
+migration. See [[database#realtime]].
 
 ## List page — `app/(app)/conversations/page.tsx`
 
@@ -84,11 +109,8 @@ The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` — if
 the schema ever changes, old rows degrade gracefully (feedback hidden,
 transcript still shown).
 
-### Auto-refresh
-
-`<ProcessingRefresh intervalMs={2500}/>` is a tiny client component that
-calls `router.refresh()` on a timer while `isProcessing(status)` is true.
-It's only mounted in that state, so finished pages don't poll.
+The detail page does not have its own polling component — updates flow
+through the realtime subscription mounted at the layout level.
 
 ## Rename + delete
 
@@ -100,9 +122,22 @@ Both live in `conversation-actions.tsx` (client) calling
 row. The row removal also cascades from `auth.users`, but a manual storage
 remove is needed because storage isn't tied to the row by FK.
 
+## Upload dialog UX
+
+`upload-dialog.tsx` (client component, on the list page).
+
+- File input + optional title input
+- Submit blocks while the bytes stream to storage (typically a few
+  seconds), then the dialog closes
+- A success toast appears with a "View" action that navigates to the
+  detail page; staying on the list lets the user start another upload
+  immediately
+- Errors stay visible inside the dialog (and as a toast) so the user
+  can correct and retry without losing context
+
 ## See also
 
 - [[ai-pipeline]] — the actual transcription + analysis
-- [[database]] — schema + RLS that this builds on
+- [[database]] — schema + RLS + realtime publication
 - [[ui]] — components used here
-- [[decisions]] — inline-vs-queue rationale
+- [[decisions]] — background pipeline + realtime rationale
