@@ -1,31 +1,45 @@
 # Sleak Wiki
 
-Living documentation for this codebase. Each note is focused on one topic and
-cross-links to the others Obsidian-style — open this folder as a vault to get
-the graph view, or just browse the files in your editor.
+Living documentation. Notes are small and cross-link Obsidian-style with
+`[[note-name]]`. Open the folder as a vault for the graph view.
+
+## How to read this
+
+- **Start here** if you're new: [[architecture]] → [[local-setup]].
+- **Looking for a feature?** Open the matching note in `features/`.
+- **Wondering why X works that way?** Find the rationale in `decisions/`.
+- **Track shipped changes** in [[changelog]].
 
 ## Map
 
-- **[[architecture]]** — system overview, data flow, route layout
-- **[[database]]** — schema, RLS, storage bucket, migrations
-- **[[auth]]** — sign-in/sign-up, route gating, session helpers
-- **[[ai-pipeline]]** — Deepgram transcription + Azure OpenAI analysis
-- **[[conversations]]** — upload + list + detail + rename + delete flows
-- **[[ui]]** — design system, shadcn components, sidebar shell
-- **[[local-setup]]** — prerequisites, env vars, ports, run commands
-- **[[decisions]]** — why we made the non-obvious calls
-- **[[changelog]]** — what changed and when
+### System
 
-## Where to start
+- [[architecture]] — system overview, route map, authorization boundary
+- [[database]] — schema, RLS, realtime publication
+- [[auth]] — sign-in/up, session helpers
+- [[ai-pipeline]] — Deepgram + Azure OpenAI, feedback schema
+- [[ui]] — design system, key primitives, playback store
+- [[local-setup]] — env, ports, commands
 
-- New to the repo? Start with [[architecture]] then [[local-setup]].
-- Touching a feature? Read the matching note and update it as part of your PR.
-- Made a non-obvious choice? Capture it in [[decisions]].
-- Shipped something? Append a [[changelog]] entry.
+### Features
+
+- [[upload]] — dropzone, signed-URL upload, sticky progress toast
+- [[playback]] — custom player and merged segment scrubber
+- [[segments]] — per-segment AI feedback (accordion)
+- [[transcript]] — interactive transcript with karaoke + click-to-seek
+
+### Decisions
+
+See `decisions/` for one-decision-per-file notes. Common entry points:
+
+- [[direct-upload]], [[background-pipeline]], [[ai-title]] — the upload + analysis story
+- [[storage-shape]], [[structured-output]] — data + AI-output choices
+- [[storage-rls]], [[route-group-auth]], [[server-actions-only]] — security + routing
 
 ## House rule
 
-> When you change code, update the doc that describes it **in the same commit**.
-> Add a [[changelog]] entry for anything user-visible or architectural.
+> When you change code, update the matching note **in the same commit**.
+> Add a [[changelog]] entry for anything user-visible. Capture
+> non-obvious choices as a new note in `decisions/`.
 
-This rule is also encoded in `CLAUDE.md` so future Claude sessions follow it.
+This is also encoded in the project root `CLAUDE.md`.
