@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { ExternalLinkIcon } from 'lucide-react'
 import {
     Breadcrumb,
     BreadcrumbEllipsis,
@@ -9,7 +8,6 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
@@ -97,20 +95,7 @@ export function SiteHeader({ breadcrumbs }: { breadcrumbs: BreadcrumbItemType[] 
                     <BreadcrumbList>{renderBreadcrumbs()}</BreadcrumbList>
                 </Breadcrumb>
 
-                {/* TODO: Replace with your own GitHub Repo Link */}
-                <div className="ml-auto flex items-center gap-2">
-                    <Button variant="ghost" asChild size="sm" className="bg-muted hidden sm:flex">
-                        <Link
-                            href="https://github.com/your-username/your-repo"
-                            rel="noopener noreferrer"
-                            target="_blank"
-                            className="flex items-center gap-2"
-                        >
-                            <span>GitHub Repo</span>
-                            <ExternalLinkIcon className="size-3.5" />
-                        </Link>
-                    </Button>
-                </div>
+                <div className="ml-auto flex items-center gap-2" />
             </div>
         </header>
     )

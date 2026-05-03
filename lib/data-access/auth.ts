@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import 'server-only'
+import { redirect } from 'next/navigation'
 import { createClient } from '../supabase/server'
 
 // Cached helper methods makes it easy to get the same value in many places
@@ -11,8 +12,11 @@ export const getCurrentUser = cache(async () => {
     const {
         data: { user },
     } = await supabase.auth.getUser()
+    return user
+})
 
-    // TODO: Fetch user's profile from the database
-
+export const requireUser = cache(async () => {
+    const user = await getCurrentUser()
+    if (!user) redirect('/auth/login')
     return user
 })

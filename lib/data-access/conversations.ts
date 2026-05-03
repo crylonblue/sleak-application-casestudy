@@ -1,58 +1,83 @@
 import { cache } from 'react'
 import 'server-only'
 import { createClient } from '../supabase/server'
-import { getCurrentUser } from './auth'
+import { requireUser } from './auth'
+import type { Feedback } from '../ai/feedback-schema'
+
+export type ConversationStatus = 'pending' | 'transcribing' | 'analyzing' | 'ready' | 'failed'
 
 /**
- * DTO (Data Transfer Object) for a conversation
- * Only includes safe, minimal data needed for the UI
+ * Minimal DTO for list views — keeps payloads small.
  */
-type ConversationDTO = {
+export type ConversationListItem = {
     id: string
     title: string
+    status: ConversationStatus
     duration_seconds: number | null
-    recording_url: string | null
+    created_at: string
 }
 
+export type ConversationDetail = ConversationListItem & {
+    recording_path: string | null
+    recording_mime: string | null
+    transcript: string | null
+    analysis: Feedback | null
+    error: string | null
+    updated_at: string
+}
+
+const SIGNED_URL_TTL_SECONDS = 60 * 60 // 1 hour
+
 /**
- * Get all conversations created by the current user.
- * This function:
- * - Only runs on the server
- * - Performs authorization checks
- * - Returns safe, minimal DTOs
- * - Uses caching to avoid redundant queries
+ * List all conversations owned by the current user.
+ * RLS guarantees only the user's own rows come back, but we still pass the
+ * user id explicitly to fail closed if the session is unexpectedly absent.
  */
-export const getOwnConversations = cache(async (): Promise<ConversationDTO[]> => {
-    // Get the current authenticated user
-    const user = await getCurrentUser()
+export const getOwnConversations = cache(async (): Promise<ConversationListItem[]> => {
+    const user = await requireUser()
 
-    // Authorization check: user must be authenticated
-    if (!user) {
-        throw new Error('Unauthorized: User must be authenticated')
-    }
-
-    // Create Supabase client
     const supabase = await createClient()
-
-    // Query conversations created by the current user
     const { data, error } = await supabase
         .from('conversations')
-        .select('*')
+        .select('id, title, status, duration_seconds, created_at')
         .eq('created_by', user.id)
         .order('created_at', { ascending: false })
 
-    if (error) {
-        console.error('Error fetching conversations:', error)
-        throw new Error('Failed to fetch conversations')
-    }
-
-    // Return safe DTOs
-    const conversations: ConversationDTO[] = data.map((conversation) => ({
-        id: conversation.id,
-        title: conversation.title,
-        duration_seconds: conversation.duration_seconds,
-        recording_url: conversation.recording_url,
-    }))
-
-    return conversations || []
+    if (error) throw new Error(`Failed to fetch conversations: ${error.message}`)
+    return (data ?? []) as ConversationListItem[]
 })
+
+/**
+ * Fetch a single conversation owned by the current user.
+ * Returns null if the row doesn't exist or isn't theirs (RLS enforces ownership).
+ */
+export const getOwnConversation = cache(async (id: string): Promise<ConversationDetail | null> => {
+    const user = await requireUser()
+
+    const supabase = await createClient()
+    const { data, error } = await supabase
+        .from('conversations')
+        .select(
+            'id, title, status, duration_seconds, created_at, updated_at, recording_path, recording_mime, transcript, analysis, error',
+        )
+        .eq('id', id)
+        .eq('created_by', user.id)
+        .maybeSingle()
+
+    if (error) throw new Error(`Failed to fetch conversation: ${error.message}`)
+    return (data as ConversationDetail | null) ?? null
+})
+
+/**
+ * Generate a short-lived signed URL for the audio file in the private
+ * recordings bucket. Returns null if the recording isn't uploaded yet.
+ */
+export async function getRecordingSignedUrl(recordingPath: string | null): Promise<string | null> {
+    if (!recordingPath) return null
+    const supabase = await createClient()
+    const { data, error } = await supabase.storage
+        .from('recordings')
+        .createSignedUrl(recordingPath, SIGNED_URL_TTL_SECONDS)
+    if (error || !data) return null
+    return data.signedUrl
+}
