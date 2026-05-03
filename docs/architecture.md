@@ -23,8 +23,14 @@ Next.js App Router  (Server Components + Server Actions)
         ▼
 Local Supabase (Docker)
   ├── auth.users
-  ├── public.conversations              (RLS: owner-only)
+  ├── public.conversations              (RLS: owner-only, in supabase_realtime publication)
   └── storage.objects (recordings/)     (RLS: path-prefix == user_id)
+
+       ▲
+       │ realtime postgres_changes (filtered by created_by)
+       │
+ConversationsRealtime  (mounted in (app)/layout.tsx)
+  └── triggers router.refresh() on every owned-row change
 ```
 
 ## Route layout
@@ -74,6 +80,21 @@ key on the server), so RLS applies uniformly.
 We use server actions for all writes (`signIn`, `uploadConversation`,
 `renameConversation`, `deleteConversation`, `signOut`). No `app/api/*` routes
 exist yet. See [[decisions]] for why.
+
+## Foreground vs background work in `uploadConversation`
+
+The upload action splits its work in two:
+
+- **Foreground** (user blocks on this): validate, insert row, stream
+  bytes to Storage, set `status='transcribing'`, return.
+- **Background** (`after()` from `next/server`): transcribe with
+  Deepgram, set `status='analyzing'`, analyze with GPT-4.1, set
+  `status='ready'` (or `'failed'`).
+
+The background phase runs after the response is sent, which is what
+lets the user keep working. The frontend learns about progress via the
+realtime subscription described above. See [[conversations]] and
+[[decisions#background-pipeline-via-after-plus-supabase-realtime]].
 
 ## See also
 

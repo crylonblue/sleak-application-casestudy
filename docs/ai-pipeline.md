@@ -6,9 +6,11 @@ Two external services, both invoked from server-only code in `lib/ai/`:
 audio bytes ──► Deepgram ──► transcript ──► Azure OpenAI ──► structured feedback (zod)
 ```
 
-The pipeline runs **inline** inside the upload server action — see
-[[conversations]] for the surrounding flow and [[decisions]] for why inline
-instead of a queue.
+The pipeline runs in the **background** of the upload server action via
+`after()` from `next/server`. The transcript + analysis flow back to the
+row asynchronously and the UI surfaces them via realtime — see
+[[conversations#upload-flow]] and
+[[decisions#background-pipeline-via-after-plus-supabase-realtime]].
 
 ## Transcription — `lib/ai/transcribe.ts`
 
@@ -63,6 +65,7 @@ The model + deployment name are env-driven (currently GPT-4.1 on the
 
 ```ts
 {
+  title: string,                     // 5-9 word CRM-style title
   summary: string,                   // 2-3 sentence overview
   overall_score: number,             // 0-10
   strengths: { point, evidence }[],          // ≤ 5
@@ -71,12 +74,17 @@ The model + deployment name are env-driven (currently GPT-4.1 on the
 }
 ```
 
-`evidence` is meant to be a quote or paraphrase from the transcript — that's
-what makes the feedback feel grounded rather than generic. The detail page
-renders evidence as a left-bordered italic blockquote.
+`evidence` is meant to be a quote or paraphrase from the transcript —
+that's what makes the feedback feel grounded rather than generic. The
+detail page renders evidence as a left-bordered italic blockquote.
+
+`title` powers the auto-generated CRM-style title for the row; the
+upload action conditionally adopts it (only if the user hasn't renamed
+since upload). See [[conversations#ai-generated-title]].
 
 This shape is stored as the `analysis` jsonb column ([[database]]) and
-re-validated with `feedbackSchema.safeParse` when the detail page reads it.
+re-validated with `feedbackSchema.safeParse` when the detail page reads
+it.
 
 ## See also
 

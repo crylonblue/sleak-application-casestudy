@@ -9,6 +9,7 @@ Postgres via local Supabase. Schema is defined in versioned migrations under
 |---|---|
 | `20260503123552_init_schema.sql` | conversations table, status enum, RLS, updated_at trigger |
 | `20260503123611_init_storage.sql` | private `recordings` bucket + path-prefix RLS |
+| `20260503141450_enable_realtime_conversations.sql` | adds `conversations` to `supabase_realtime` + `replica identity full` |
 
 Apply with `supabase db reset` (rebuilds from scratch + runs migrations) or
 `supabase migration up` (applies new migrations on top).
@@ -74,6 +75,23 @@ RLS uses the first path segment as the ownership check:
 This means you can only read/write/delete files whose path starts with your
 own UUID — even if you somehow guessed another user's `conversation_id`,
 storage rejects you.
+
+## Realtime
+
+The third migration adds `public.conversations` to the
+`supabase_realtime` publication so postgres_changes events flow through
+to subscribed clients. RLS still applies — clients only receive events
+for rows they have `select` on, which means each user sees only their
+own.
+
+`replica identity full` is set on the table so `UPDATE` events carry the
+full new row rather than just changed columns. Without this the client
+filter `created_by=eq.<user_id>` would drop updates whose payload
+doesn't include `created_by`.
+
+The frontend subscription lives in
+`components/realtime/conversations-realtime.tsx`, mounted once in
+`app/(app)/layout.tsx`. See [[conversations#realtime-status-updates]].
 
 ## See also
 

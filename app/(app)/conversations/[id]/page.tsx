@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +7,7 @@ import { feedbackSchema } from '@/lib/ai/feedback-schema'
 import { getOwnConversation, getRecordingSignedUrl } from '@/lib/data-access/conversations'
 import { ConversationActions } from './conversation-actions'
 import { FeedbackView } from './feedback-view'
-import { ProcessingRefresh } from './processing-refresh'
+import { ProcessingPanel } from './processing-panel'
 
 function formatDuration(seconds: number | null) {
     if (seconds == null) return null
@@ -36,7 +35,6 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                     { title: conversation.title },
                 ]}
             />
-            {isProcessing(conversation.status) && <ProcessingRefresh />}
             <main className="@container/main flex flex-1 flex-col gap-2">
                 <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 lg:px-6">
                     <header className="flex flex-wrap items-start justify-between gap-4">
@@ -75,7 +73,9 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                         </Card>
                     )}
 
-                    {isProcessing(conversation.status) && <ProcessingPanel status={conversation.status} />}
+                    {isProcessing(conversation.status) && (
+                        <ProcessingPanel conversationId={conversation.id} status={conversation.status} />
+                    )}
 
                     {feedback && <FeedbackView feedback={feedback} />}
 
@@ -94,22 +94,5 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                 </div>
             </main>
         </>
-    )
-}
-
-function ProcessingPanel({ status }: { status: 'pending' | 'transcribing' | 'analyzing' }) {
-    const message =
-        status === 'transcribing'
-            ? 'Transcribing your call with Deepgram…'
-            : status === 'analyzing'
-              ? 'Generating coaching feedback with GPT-4.1…'
-              : 'Queued — this will start in a moment.'
-    return (
-        <Card>
-            <CardContent className="flex items-center gap-3 py-6">
-                <Loader2 className="text-muted-foreground size-5 animate-spin" />
-                <p className="text-muted-foreground text-sm">{message}</p>
-            </CardContent>
-        </Card>
     )
 }

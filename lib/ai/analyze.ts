@@ -9,7 +9,11 @@ honest, actionable coaching feedback.
 Be specific, evidence-based, and constructive. Quote or paraphrase the transcript when citing evidence.
 Focus on rapport, discovery, value articulation, objection handling, and clear next steps.
 If the transcript is too short or off-topic to assess, still produce structured output and call that
-out in the summary.`
+out in the summary.
+
+You will also generate a concise CRM-style title for the call. Make it specific (who and what topic),
+not generic. If the transcript is too short to know, fall back to a sensible neutral title like
+"Short recording — limited content".`
 
 let cachedModel: AzureChatOpenAI | null = null
 function getModel() {

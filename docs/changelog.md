@@ -6,6 +6,81 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Surface upload progress on the detail page
+
+The detail page's `ProcessingPanel` now shows the byte-level upload
+progress bar when the row is in `status='pending'` and the local upload
+tracker has data for it, then transitions naturally to the existing
+`Transcribing…` / `Analyzing…` stages. Single rolling status surface.
+
+Implemented via a module-level `lib/uploads/upload-tracker.ts` (using
+`useSyncExternalStore`) that the upload dialog writes to and the panel
+reads from. Per-tab state, no new server surface needed.
+
+See [[decisions#upload-progress-shown-in-the-same-panel-as-processing-status]],
+[[conversations#unified-upload--processing-status]].
+
+---
+
+## 2026-05-03 — Direct upload to Storage with progress bar + AI-generated title
+
+The upload no longer flows through the Next.js Server Action runtime.
+The browser PUTs audio bytes directly to a signed Supabase Storage URL
+with `xhr.upload.onprogress` driving a real progress bar in the dialog.
+Three actions orchestrate the dance: `prepareUpload` (insert row + mint
+URL), `finalizeUpload` (flip to `transcribing` + schedule pipeline via
+`after()`), and `cancelUpload` (cleanup on abort).
+
+The title input is gone from the upload dialog. The analyze step now
+returns a `title` field on `feedbackSchema`; the row is updated to that
+value with a `where title = <filename_default>` predicate so user
+renames always win. Existing rename action stays untouched.
+
+Side effects:
+
+- New shadcn `Progress` component.
+- `feedbackSchema` gained a required `title` string. Old rows whose
+  `analysis` lacks `title` now fail `safeParse` on the detail page →
+  feedback section hides for those rows; transcript still shows. Wipe
+  local rows or re-run analysis if you care.
+- The body-size knobs in `next.config.ts` are no longer load-bearing
+  for the audio path (kept for any future small-file Server Actions).
+
+See [[decisions#direct-upload-via-signed-url]],
+[[decisions#ai-generated-crm-style-title]],
+[[conversations#upload-flow]],
+[[ai-pipeline#feedback-schema--libaifeedback-schemats]].
+
+---
+
+## 2026-05-03 — Background pipeline + realtime status updates
+
+The upload action no longer blocks the user on transcription + analysis.
+Foreground work is just `validate → insert row → upload bytes → set
+status='transcribing' → return`; transcription and analysis run via
+`after()` from `next/server` after the response is sent. A new
+`ConversationsRealtime` client component subscribes to
+`postgres_changes` on `public.conversations` (filtered by `created_by`)
+and triggers `router.refresh()` on every change, so list and detail
+views update live as the background pipeline progresses.
+
+Side effects:
+
+- Upload dialog closes immediately on success and toasts a "View"
+  action — user can start another upload or navigate freely while
+  analysis runs.
+- Removed `app/(app)/conversations/[id]/processing-refresh.tsx` (the
+  former polling component); realtime replaces it.
+- New migration `20260503141450_enable_realtime_conversations.sql`
+  adds the table to `supabase_realtime` and sets `replica identity
+  full`.
+
+See [[decisions#background-pipeline-via-after-plus-supabase-realtime]],
+[[conversations#realtime-status-updates]],
+[[database#realtime]], and [[architecture#foreground-vs-background-work-in-uploadconversation]].
+
+---
+
 ## 2026-05-03 — Move proxy body cap under `experimental` (it was being silently rejected)
 
 Previous commit set `proxyClientMaxBodySize` at the top of
