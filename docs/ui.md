@@ -29,6 +29,8 @@ To add more primitives: `pnpm dlx shadcn@latest add <name>`.
 | Breadcrumb | `SiteHeader` |
 | Skeleton | sidebar menu skeleton |
 | Progress | upload-dialog progress bar, processing-panel upload phase |
+| Tabs | conversation detail page (Segments / Coach / Transcript) |
+| Accordion | per-segment feedback (single-open, follows playback) |
 
 ## Playback store
 

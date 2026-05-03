@@ -6,6 +6,32 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Detail page tabs + accordion segments + transcript scroll fix
+
+The detail page was getting crowded — overall coaching feedback, every
+segment expanded, and a long transcript all stacked vertically. Two
+shifts:
+
+- **Tabs** (`Segments` / `Coach` / `Transcript`) under a persistent
+  Recording card. The audio player + segment timeline stay visible from
+  any tab so scrubbing keeps working while reading the transcript or
+  coach view.
+- **Single-open accordion** for segments. The currently-playing segment
+  auto-expands; clicking another segment opens it and suspends
+  auto-follow for 8 seconds so playback can't yank the reader back. Each
+  panel has a *Jump to mm:ss* button.
+
+Also fixed a transcript scrolling bug: the auto-scroll's
+`scrollIntoView({ block: 'center' })` was bubbling out and nudging the
+page in some browsers. Replaced with manual `container.scrollTo` math so
+only the transcript box moves. Added `overscroll-contain` so wheel
+events at the edges of the box don't bubble to the page either.
+
+See [[conversations#detail-page--app-app-conversations-id-page-tsx]],
+[[conversations#segments]], and [[ui#components-in-use]].
+
+---
+
 ## 2026-05-03 — Segmented call analysis + click-to-seek karaoke transcript
 
 Calls are now split by GPT into 3–8 logical segments (e.g. *Discovery

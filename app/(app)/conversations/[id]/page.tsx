@@ -3,6 +3,7 @@ import { SiteHeader } from '@/components/site-header'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge, isProcessing } from '@/components/ui/status-badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { feedbackSchema } from '@/lib/ai/feedback-schema'
 import {
     getOwnConversation,
@@ -37,6 +38,7 @@ export default async function ConversationDetailPage({ params }: { params: Promi
     const duration = formatDuration(conversation.duration_seconds)
     const parsedFeedback = conversation.analysis ? feedbackSchema.safeParse(conversation.analysis) : null
     const feedback = parsedFeedback?.success ? parsedFeedback.data : null
+    const processing = isProcessing(conversation.status)
 
     return (
         <>
@@ -83,26 +85,32 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                         </Card>
                     )}
 
-                    {isProcessing(conversation.status) && (
-                        <ProcessingPanel conversationId={conversation.id} status={conversation.status} />
-                    )}
+                    {processing && <ProcessingPanel conversationId={conversation.id} status={conversation.status} />}
 
-                    {feedback && <FeedbackView feedback={feedback} />}
-
-                    {feedback && <SegmentFeedback segments={feedback.segments} />}
-
-                    {transcriptSegments && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base">Transcript</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <TranscriptView
-                                    segments={transcriptSegments}
-                                    repSpeakerNumber={feedback?.rep_speaker_number}
-                                />
-                            </CardContent>
-                        </Card>
+                    {feedback && transcriptSegments && (
+                        <Tabs defaultValue="segments" className="flex flex-col gap-4">
+                            <TabsList>
+                                <TabsTrigger value="segments">Segments</TabsTrigger>
+                                <TabsTrigger value="coach">Coach</TabsTrigger>
+                                <TabsTrigger value="transcript">Transcript</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="segments" className="mt-0">
+                                <SegmentFeedback segments={feedback.segments} />
+                            </TabsContent>
+                            <TabsContent value="coach" className="mt-0">
+                                <FeedbackView feedback={feedback} />
+                            </TabsContent>
+                            <TabsContent value="transcript" className="mt-0">
+                                <Card>
+                                    <CardContent className="pt-6">
+                                        <TranscriptView
+                                            segments={transcriptSegments}
+                                            repSpeakerNumber={feedback.rep_speaker_number}
+                                        />
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+                        </Tabs>
                     )}
                 </div>
             </main>

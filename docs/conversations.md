@@ -161,12 +161,14 @@ boundaries where the topic actually changes. They're contiguous (no
 gaps/overlaps) and cover the whole call from 0 to total duration; the
 analyze step snaps fractional-second drift before persisting.
 
-The detail page renders them as stacked `SegmentCard`s under the overall
-feedback. The currently-playing segment gets an accent ring and badge
-fill; clicking any card seeks the audio to its start. A small
-`SegmentTimeline` strip lives inside the Recording card under the
-`<audio>` element — proportionally-sized blocks for each segment with
-a "Segment N of M · Title" pill above; clicking a block seeks too.
+The detail page renders them in the **Segments** tab as a single-open
+accordion. The currently-playing segment auto-expands; clicking another
+segment opens it and suspends auto-follow for 8 seconds so playback
+can't yank the user back mid-read. Each item has a *Jump to mm:ss*
+button that seeks the audio. A separate compact `SegmentTimeline` strip
+also lives inside the Recording card under the `<audio>` element —
+proportionally-sized blocks for each segment with a "Segment N of M ·
+Title" pill above; clicking a block seeks too.
 
 ## Detail page — `app/(app)/conversations/[id]/page.tsx`
 
@@ -177,15 +179,19 @@ Renders, in order:
 
 - Title + status badge + uploaded timestamp + actions (rename, delete)
 - Failure alert (if `status='failed'`)
-- Recording card: `RecordingPlayer` (audio registered with playback store)
-  + `SegmentTimeline` strip (clickable per-segment blocks)
+- Recording card: `RecordingPlayer` (audio registered with playback
+  store) + `SegmentTimeline` strip (clickable per-segment blocks). Stays
+  visible above the tabs so the user can scrub from any view.
 - `ProcessingPanel` (if still processing)
-- `FeedbackView` (overall feedback — if `analysis` parses successfully)
-- `SegmentFeedback` (per-segment cards — if `analysis.segments` is
-  non-empty; active card gets an accent ring, click-to-seek)
-- `TranscriptView` (interactive — sentence-level karaoke highlight,
-  click-to-seek, auto-scroll with 5s manual-scroll grace) — if
-  `conversation_transcripts` exists for the row
+- Tabs (only when `feedback` and `transcript_segments` are both ready):
+  - **Segments** (default) — `SegmentFeedback` accordion. Single-open;
+    follows playback automatically; user clicks suspend auto-follow for
+    8 seconds so they can read uninterrupted.
+  - **Coach** — `FeedbackView` (overall summary, score, top
+    strengths/improvements, next steps).
+  - **Transcript** — `TranscriptView` (sentence-level karaoke
+    highlight, click-to-seek, auto-scroll with 5s manual-scroll grace,
+    `overscroll-contain` so wheel events stay inside the box).
 
 The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —
 if the schema ever changes, old rows degrade gracefully (feedback

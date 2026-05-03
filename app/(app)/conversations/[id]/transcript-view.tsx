@@ -12,7 +12,8 @@ const SCROLL_GRACE_MS = 5000
  * are clickable to seek the audio, the active sentence (whichever one
  * `currentTime` falls inside) is highlighted karaoke-style.
  *
- * Auto-scroll keeps the active sentence centered, but pauses for
+ * Auto-scroll keeps the active sentence centered inside *the container*
+ * (not the page — see comment on the scroll math below). Pauses for
  * SCROLL_GRACE_MS after the user manually scrolls so we don't fight them
  * when they want to read elsewhere.
  */
@@ -57,6 +58,12 @@ export function TranscriptView({
 
     // Auto-scroll the active sentence into view when it changes — unless
     // the user scrolled in the last SCROLL_GRACE_MS.
+    //
+    // We don't use scrollIntoView({ block: 'center' }) because in nested
+    // scrollable contexts (this container *and* the page itself can both
+    // scroll) some browsers also nudge the page, which is exactly the bug
+    // this code is meant to avoid. Computing the scroll offset by hand and
+    // calling container.scrollTo guarantees only the container moves.
     useEffect(() => {
         if (!activeSentence) return
         const container = containerRef.current
@@ -67,12 +74,20 @@ export function TranscriptView({
         if (!target) return
         if (Date.now() - userScrolledAtRef.current < SCROLL_GRACE_MS) return
 
+        const containerRect = container.getBoundingClientRect()
+        const targetRect = target.getBoundingClientRect()
+        const offsetWithinContainer = targetRect.top - containerRect.top + container.scrollTop
+        const desiredTop = offsetWithinContainer - container.clientHeight / 2 + targetRect.height / 2
+
         lastAutoScrollAt.current = Date.now()
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        container.scrollTo({ top: Math.max(0, desiredTop), behavior: 'smooth' })
     }, [activeSentence])
 
     return (
-        <div ref={containerRef} className="flex max-h-96 flex-col gap-4 overflow-y-auto pr-2">
+        <div
+            ref={containerRef}
+            className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto overscroll-contain pr-2"
+        >
             {segments.paragraphs.map((paragraph, i) => (
                 <Paragraph
                     key={i}

@@ -1,10 +1,14 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { CheckCircle2, TriangleAlert } from 'lucide-react'
 import { seekTo, useCurrentTime } from '@/components/playback/playback-store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { FeedbackSegment } from '@/lib/ai/feedback-schema'
+
+const FOLLOW_GRACE_MS = 8000
 
 function formatRange(start: number, end: number) {
     const fmt = (s: number) => {
@@ -17,31 +21,59 @@ function formatRange(start: number, end: number) {
 }
 
 /**
- * Stacked per-segment feedback cards rendered below the overall feedback on
- * the detail page. The currently-playing segment gets an accent ring; clicking
- * any card seeks the audio to the segment's start.
+ * Per-segment feedback rendered as an accordion. Only one segment is
+ * expanded at a time — by default it follows playback (whatever segment
+ * `currentTime` is in). The user can click another segment to read it;
+ * we then suspend auto-follow for FOLLOW_GRACE_MS so playback updates
+ * don't yank them back.
  */
 export function SegmentFeedback({ segments }: { segments: FeedbackSegment[] }) {
     const currentTime = useCurrentTime()
-    if (!segments.length) return null
     const activeIndex = segments.findIndex(
         (s) => currentTime >= s.start_seconds && currentTime < s.end_seconds,
     )
+    const [openValue, setOpenValue] = useState<string>(() => itemValue(Math.max(0, activeIndex)))
+    const [manualOverrideAt, setManualOverrideAt] = useState(0)
+
+    useEffect(() => {
+        if (activeIndex < 0) return
+        if (Date.now() - manualOverrideAt < FOLLOW_GRACE_MS) return
+        setOpenValue(itemValue(activeIndex))
+    }, [activeIndex, manualOverrideAt])
+
+    const onValueChange = (value: string) => {
+        // Empty string means "the current item was collapsed". Honor that.
+        setOpenValue(value)
+        setManualOverrideAt(Date.now())
+    }
+
+    if (!segments.length) return null
+
     return (
-        <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold tracking-tight">Segments</h2>
-            <ol className="flex flex-col gap-3">
-                {segments.map((seg, i) => (
-                    <li key={i}>
-                        <SegmentCard index={i} segment={seg} isActive={i === activeIndex} />
-                    </li>
-                ))}
-            </ol>
-        </section>
+        <Accordion
+            type="single"
+            collapsible
+            value={openValue}
+            onValueChange={onValueChange}
+            className="flex flex-col gap-2"
+        >
+            {segments.map((seg, i) => (
+                <SegmentItem
+                    key={i}
+                    index={i}
+                    segment={seg}
+                    isActive={i === activeIndex}
+                />
+            ))}
+        </Accordion>
     )
 }
 
-function SegmentCard({
+function itemValue(i: number) {
+    return `segment-${i}`
+}
+
+function SegmentItem({
     index,
     segment,
     isActive,
@@ -51,25 +83,15 @@ function SegmentCard({
     isActive: boolean
 }) {
     return (
-        <Card
-            role="button"
-            tabIndex={0}
-            onClick={() => seekTo(segment.start_seconds)}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    seekTo(segment.start_seconds)
-                }
-            }}
+        <AccordionItem
+            value={itemValue(index)}
             className={cn(
-                'cursor-pointer transition-colors',
-                isActive
-                    ? 'ring-primary bg-primary/[0.03] ring-2'
-                    : 'hover:border-muted-foreground/30',
+                'rounded-lg border bg-card transition-colors',
+                isActive && 'border-primary/40 bg-primary/[0.03]',
             )}
         >
-            <CardHeader className="flex-row items-baseline justify-between gap-4 space-y-0">
-                <div className="flex items-baseline gap-3">
+            <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                <div className="flex flex-1 items-center gap-3 text-left">
                     <span
                         className={cn(
                             'inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums',
@@ -78,34 +100,50 @@ function SegmentCard({
                     >
                         {index + 1}
                     </span>
-                    <CardTitle className="text-base">{segment.title}</CardTitle>
+                    <span className="text-sm font-medium">{segment.title}</span>
+                    <span className="text-muted-foreground ml-auto text-xs tabular-nums">
+                        {formatRange(segment.start_seconds, segment.end_seconds)}
+                    </span>
                 </div>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                    {formatRange(segment.start_seconds, segment.end_seconds)}
-                </span>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-                <p className="text-muted-foreground text-sm leading-relaxed">{segment.summary}</p>
-                {(segment.strengths.length > 0 || segment.improvements.length > 0) && (
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <SegmentList
-                            icon={
-                                <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                            }
-                            label="What went well"
-                            items={segment.strengths}
-                            empty="Nothing notable to call out here."
-                        />
-                        <SegmentList
-                            icon={<TriangleAlert className="size-3.5 text-amber-600 dark:text-amber-400" />}
-                            label="What to improve"
-                            items={segment.improvements}
-                            empty="Nothing to flag in this segment."
-                        />
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+                <div className="flex flex-col gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-muted-foreground text-sm leading-relaxed">{segment.summary}</p>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                seekTo(segment.start_seconds)
+                            }}
+                        >
+                            Jump to {formatRange(segment.start_seconds, segment.end_seconds).split(' ')[0]}
+                        </Button>
                     </div>
-                )}
-            </CardContent>
-        </Card>
+                    {(segment.strengths.length > 0 || segment.improvements.length > 0) && (
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <SegmentList
+                                icon={
+                                    <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                }
+                                label="What went well"
+                                items={segment.strengths}
+                                empty="Nothing notable to call out here."
+                            />
+                            <SegmentList
+                                icon={
+                                    <TriangleAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
+                                }
+                                label="What to improve"
+                                items={segment.improvements}
+                                empty="Nothing to flag in this segment."
+                            />
+                        </div>
+                    )}
+                </div>
+            </AccordionContent>
+        </AccordionItem>
     )
 }
 
