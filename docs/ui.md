@@ -28,6 +28,21 @@ To add more primitives: `pnpm dlx shadcn@latest add <name>`.
 | Sonner (`Toaster`) | toast notifications, mounted in root layout |
 | Breadcrumb | `SiteHeader` |
 | Skeleton | sidebar menu skeleton |
+| Progress | upload-dialog progress bar, processing-panel upload phase |
+
+## Playback store
+
+`components/playback/playback-store.ts` is a tiny module-level store
+(same shape as `lib/uploads/upload-tracker.ts`) that owns "the audio
+element on the current page" and broadcasts its `currentTime` /
+play-pause state to anything that subscribes via `useCurrentTime()` /
+`useIsPlaying()`. Components that want to scrub call `seekTo(seconds)`.
+
+The detail page mounts a single `<audio ref={registerAudio}/>` inside
+`RecordingPlayer`. The transcript view, segment cards, and (in Phase 4)
+the segment timeline all read from this store without any
+context/provider plumbing — keeping them as ordinary client components
+that can be used à la carte.
 
 ## Layout shell
 

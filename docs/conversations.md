@@ -175,11 +175,12 @@ Renders, in order:
 
 - Title + status badge + uploaded timestamp + actions (rename, delete)
 - Failure alert (if `status='failed'`)
-- `<audio>` player (if recording is uploaded)
+- `RecordingPlayer` — audio element registered with the playback store
 - `ProcessingPanel` (if still processing)
 - `FeedbackView` (overall feedback — if `analysis` parses successfully)
 - `SegmentFeedback` (per-segment cards — if `analysis.segments` is non-empty)
-- Transcript panel (if transcript exists)
+- `TranscriptView` (interactive — if `conversation_transcripts` exists for the row);
+  falls back to the flat `<pre>` view for older rows that pre-date Phase 1
 
 The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —
 if the schema ever changes, old rows degrade gracefully (feedback

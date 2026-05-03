@@ -4,11 +4,17 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge, isProcessing } from '@/components/ui/status-badge'
 import { feedbackSchema } from '@/lib/ai/feedback-schema'
-import { getOwnConversation, getRecordingSignedUrl } from '@/lib/data-access/conversations'
+import {
+    getOwnConversation,
+    getRecordingSignedUrl,
+    getTranscriptSegments,
+} from '@/lib/data-access/conversations'
 import { ConversationActions } from './conversation-actions'
 import { FeedbackView } from './feedback-view'
 import { ProcessingPanel } from './processing-panel'
+import { RecordingPlayer } from './recording-player'
 import { SegmentFeedback } from './segment-feedback'
+import { TranscriptView } from './transcript-view'
 
 function formatDuration(seconds: number | null) {
     if (seconds == null) return null
@@ -23,7 +29,10 @@ export default async function ConversationDetailPage({ params }: { params: Promi
     const conversation = await getOwnConversation(id)
     if (!conversation) notFound()
 
-    const audioUrl = await getRecordingSignedUrl(conversation.recording_path)
+    const [audioUrl, transcriptSegments] = await Promise.all([
+        getRecordingSignedUrl(conversation.recording_path),
+        getTranscriptSegments(conversation.id),
+    ])
     const duration = formatDuration(conversation.duration_seconds)
     const parsedFeedback = conversation.analysis ? feedbackSchema.safeParse(conversation.analysis) : null
     const feedback = parsedFeedback?.success ? parsedFeedback.data : null
@@ -67,9 +76,7 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                                 <CardTitle className="text-base">Recording</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <audio controls preload="metadata" className="w-full" src={audioUrl}>
-                                    Your browser does not support audio playback.
-                                </audio>
+                                <RecordingPlayer src={audioUrl} />
                             </CardContent>
                         </Card>
                     )}
@@ -84,17 +91,31 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                         <SegmentFeedback segments={feedback.segments} />
                     )}
 
-                    {conversation.transcript && (
+                    {transcriptSegments ? (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base">Transcript</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <pre className="text-muted-foreground max-h-96 overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                                    {conversation.transcript}
-                                </pre>
+                                <TranscriptView
+                                    segments={transcriptSegments}
+                                    repSpeakerNumber={feedback?.rep_speaker_number}
+                                />
                             </CardContent>
                         </Card>
+                    ) : (
+                        conversation.transcript && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-base">Transcript</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <pre className="text-muted-foreground max-h-96 overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                                        {conversation.transcript}
+                                    </pre>
+                                </CardContent>
+                            </Card>
+                        )
                     )}
                 </div>
             </main>
