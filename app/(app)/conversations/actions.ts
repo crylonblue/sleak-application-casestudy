@@ -165,7 +165,14 @@ export async function finalizeUpload({
             }
 
             const audio = Buffer.from(await blob.arrayBuffer())
-            const { transcript, durationSeconds } = await transcribeAudio(audio, mimeType)
+            const { transcript, durationSeconds, segments } = await transcribeAudio(audio, mimeType)
+
+            // Persist the structured timing data in its own table so the
+            // bulky paragraphs blob doesn't ride along on every realtime
+            // UPDATE event for the parent row. See [[database#realtime]].
+            await supabase
+                .from('conversation_transcripts')
+                .upsert({ conversation_id: conversationId, paragraphs: segments.paragraphs })
 
             await supabase
                 .from('conversations')

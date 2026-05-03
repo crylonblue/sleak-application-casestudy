@@ -26,10 +26,38 @@ const response = await client.listen.v1.media.transcribeFile(
 )
 ```
 
-Returns `{ transcript, durationSeconds }`. We prefer
-`paragraphs.transcript` (smart-formatted, with speaker breaks) over the raw
-`transcript` field. Throws if the response is empty or asynchronous (only
-synchronous transcription is wired up).
+Returns `{ transcript, durationSeconds, segments }`:
+
+- `transcript` — the smart-formatted flat string (display fallback,
+  also stored on `conversations.transcript`).
+- `durationSeconds` — total audio duration; used to validate segment
+  bounds and to render duration on the list page.
+- `segments` — the structured paragraphs/sentences/words timing data,
+  projected from Deepgram's response into our `TranscriptSegments`
+  shape:
+
+  ```ts
+  {
+    paragraphs: Array<{
+      speaker?: number
+      start: number
+      end: number
+      sentences: Array<{
+        text: string
+        start: number
+        end: number
+        words: Array<{ word, start, end, confidence? }>
+      }>
+    }>
+  }
+  ```
+
+  Words live under sentences (Deepgram returns them flat, we bucket
+  them by time range during projection). Persisted in
+  `public.conversation_transcripts` — see [[database]].
+
+Throws if the response is empty or asynchronous (only synchronous
+transcription is wired up).
 
 ### Why nova-3 + multi
 
