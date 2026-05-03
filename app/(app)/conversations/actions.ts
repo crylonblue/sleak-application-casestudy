@@ -179,7 +179,13 @@ export async function finalizeUpload({
                 .update({ transcript, duration_seconds: durationSeconds, status: 'analyzing' })
                 .eq('id', conversationId)
 
-            const analysis = await analyzeTranscript(transcript)
+            // Fall back to the last sentence's end if Deepgram didn't return
+            // a duration. analyzeTranscript needs a number for refining
+            // segment boundaries.
+            const lastEnd =
+                segments.paragraphs.at(-1)?.sentences.at(-1)?.end ?? 0
+            const totalSeconds = durationSeconds ?? lastEnd
+            const analysis = await analyzeTranscript({ segments, durationSeconds: totalSeconds })
 
             await supabase
                 .from('conversations')

@@ -149,6 +149,23 @@ renders a shadcn `Table` with title / status / duration / uploaded-at,
 plus an `UploadDialog`. Empty state shows the same dialog as the only
 CTA.
 
+## Segments
+
+Each call is split by GPT into 3–8 logical segments (e.g. *Introduction*,
+*Discovery questions*, *Pricing pushback*) with per-segment summaries,
+strengths, and improvements. See [[ai-pipeline#feedback-schema]] for the
+exact shape and [[ai-pipeline#analysis]] for how they're produced.
+
+Segments are AI-determined (not time-based) — the model picks
+boundaries where the topic actually changes. They're contiguous (no
+gaps/overlaps) and cover the whole call from 0 to total duration; the
+analyze step snaps fractional-second drift before persisting.
+
+The detail page renders them as stacked `SegmentCard`s under the overall
+feedback (see [[#detail-page--app-app-conversations-id-page-tsx]]).
+Phase 4 will add click-to-seek + an "active" state driven by the audio
+player's `currentTime`.
+
 ## Detail page — `app/(app)/conversations/[id]/page.tsx`
 
 Server component, `getOwnConversation(id)` for the row and
@@ -160,7 +177,8 @@ Renders, in order:
 - Failure alert (if `status='failed'`)
 - `<audio>` player (if recording is uploaded)
 - `ProcessingPanel` (if still processing)
-- `FeedbackView` (if `analysis` parses successfully)
+- `FeedbackView` (overall feedback — if `analysis` parses successfully)
+- `SegmentFeedback` (per-segment cards — if `analysis.segments` is non-empty)
 - Transcript panel (if transcript exists)
 
 The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —

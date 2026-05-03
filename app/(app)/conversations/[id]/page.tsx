@@ -8,6 +8,7 @@ import { getOwnConversation, getRecordingSignedUrl } from '@/lib/data-access/con
 import { ConversationActions } from './conversation-actions'
 import { FeedbackView } from './feedback-view'
 import { ProcessingPanel } from './processing-panel'
+import { SegmentFeedback } from './segment-feedback'
 
 function formatDuration(seconds: number | null) {
     if (seconds == null) return null
@@ -78,6 +79,10 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                     )}
 
                     {feedback && <FeedbackView feedback={feedback} />}
+
+                    {feedback && feedback.segments && feedback.segments.length > 0 && (
+                        <SegmentFeedback segments={feedback.segments} />
+                    )}
 
                     {conversation.transcript && (
                         <Card>
