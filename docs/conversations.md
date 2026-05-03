@@ -180,11 +180,14 @@ Renders, in order:
 - Failure alert (if `status='failed'`)
 - Recording card: `RecordingPlayer` (custom shadcn-styled controls — a
   filled circular play/pause button, a single merged scrubber whose
-  track is rendered as proportional segment blocks, a thin vertical
-  line at the current position (no thumb knob), a hover guide line +
-  tooltip showing `mm:ss · Segment title`, and an `mm:ss / mm:ss` time
-  readout). The native `<audio>` chrome is hidden. Stays visible above
-  the tabs so the user can scrub from any view.
+  track is rendered as proportional segment blocks. The currently
+  playing segment is rendered as a **taller, darker overlay** on top of
+  the uniform-height base blocks so it pops at a glance. A thin
+  vertical line marks the current position (no thumb knob); a hover
+  guide line + tooltip shows `mm:ss · Segment title`; and an
+  `mm:ss / mm:ss` time readout sits below). The native `<audio>` chrome
+  is hidden. Stays visible above the tabs so the user can scrub from
+  any view.
 - `ProcessingPanel` (if still processing)
 - Tabs (only when `feedback` and `transcript_segments` are both ready):
   - **Segments** (default) — `SegmentFeedback` accordion. Single-open;

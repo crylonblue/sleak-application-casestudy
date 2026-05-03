@@ -172,7 +172,7 @@ function Scrubber({
             aria-valuenow={Math.floor(currentTime)}
             tabIndex={isReady ? 0 : -1}
             className={cn(
-                'relative h-3 select-none',
+                'relative h-4 select-none',
                 isReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded',
             )}
@@ -193,7 +193,11 @@ function Scrubber({
                 }
             }}
         >
-            {/* Track background — segment blocks (or a single bar if no segments yet) */}
+            {/* Track background — uniform-height segment blocks. Both active */}
+            {/* and inactive blocks render at the same h-1.5 here so the */}
+            {/* borders between blocks line up cleanly; the active block's */}
+            {/* visual emphasis comes from a separate taller, darker overlay */}
+            {/* rendered on top below. */}
             <div className="absolute inset-x-0 top-1/2 flex h-1.5 -translate-y-1/2 overflow-hidden rounded-full">
                 {segments && segments.length > 0 ? (
                     segments.map((s, i) => {
@@ -202,10 +206,7 @@ function Scrubber({
                             <div
                                 key={i}
                                 style={{ width: `${width}%` }}
-                                className={cn(
-                                    'h-full border-r border-background last:border-r-0',
-                                    i === activeIndex ? 'bg-primary/25' : 'bg-muted-foreground/25',
-                                )}
+                                className="bg-muted-foreground/25 h-full border-r border-background last:border-r-0"
                             />
                         )
                     })
@@ -214,7 +215,27 @@ function Scrubber({
                 )}
             </div>
 
-            {/* Played overlay — sits on top of the segment blocks, gets darker the farther you've played */}
+            {/* Active segment accent — taller and darker so the user can see */}
+            {/* at a glance which segment they are in. Sits between the base */}
+            {/* blocks and the played overlay so the played overlay still */}
+            {/* shows progress through the active block. */}
+            {activeIndex >= 0 && segments && segments[activeIndex] && duration > 0 && (
+                <div
+                    style={{
+                        left: `${(segments[activeIndex].start_seconds / duration) * 100}%`,
+                        width: `${
+                            ((segments[activeIndex].end_seconds - segments[activeIndex].start_seconds) /
+                                duration) *
+                            100
+                        }%`,
+                    }}
+                    className="bg-primary/55 pointer-events-none absolute inset-y-0 rounded-sm transition-[left,width] duration-200"
+                />
+            )}
+
+            {/* Played overlay — thin line through the centre. Stays at h-1.5 */}
+            {/* so it reads as a "progress streak" running through whatever */}
+            {/* (taller) active block it crosses. */}
             <div
                 className="bg-primary/45 pointer-events-none absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-l-full"
                 style={{ width: `${playFraction * 100}%` }}

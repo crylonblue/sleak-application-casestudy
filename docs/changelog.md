@@ -6,6 +6,28 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Make the active segment block taller and darker
+
+The active segment used to be barely visible on the merged scrubber
+(`bg-primary/25` over `bg-primary/45` played overlay made the played
+portion dominate the active state). Restructured so the active segment
+renders as its own absolutely-positioned overlay between the base
+blocks and the played overlay:
+
+- Base track: uniform `h-1.5` blocks (clean borders, all aligned).
+- Active overlay: full-track-height (`h-4`), `bg-primary/55` — taller
+  and darker than anything else.
+- Played overlay: stays a thin `h-1.5` stripe through the centre, so
+  in the active region it shows a darker progress streak crossing
+  through the tall block.
+
+Effectively: the segment you're in jumps out as a tall dark slab; the
+played portion is visible as a streak through it.
+
+See [[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
 ## 2026-05-03 — Merge segment timeline into the player scrubber
 
 The Recording card had two horizontal bars stacked on top of each other
