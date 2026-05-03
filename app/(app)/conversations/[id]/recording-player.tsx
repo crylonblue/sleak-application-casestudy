@@ -229,7 +229,7 @@ function Scrubber({
                             100
                         }%`,
                     }}
-                    className="bg-primary/55 pointer-events-none absolute inset-y-0 rounded-sm transition-[left,width] duration-200"
+                    className="bg-primary/35 pointer-events-none absolute inset-y-0 rounded-sm transition-[left,width] duration-200"
                 />
             )}
 

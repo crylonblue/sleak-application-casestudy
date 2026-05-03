@@ -220,20 +220,23 @@ storage remove is needed because storage isn't tied to the row by FK.
 
 `upload-dialog.tsx` (client component, on the list page).
 
-- File input only — no title input. The AI fills that in after analysis;
-  user can rename anytime via the existing rename action.
-- Submit goes through the three-step flow above. The dialog shows:
-  - "Preparing upload…" while `prepareUpload` runs
-  - A real progress bar (with uploaded / total MB and percentage) driven
-    by `xhr.upload.onprogress` while bytes stream to Storage
-  - "Finalizing — analysis is starting…" while `finalizeUpload` runs
-  - On success, dialog closes and a toast appears with a "View" action
-    that navigates to the detail page
-- "Cancel" during upload aborts the XHR and calls `cancelUpload` to
-  remove the partial object and the row, leaving no orphans.
-- Closing the dialog by clicking outside or pressing Esc is blocked
-  while the upload is in-flight, so the user doesn't accidentally
-  abandon work in a way that costs storage.
+- The dialog is just a **dropzone**: a dashed-border card that accepts
+  drag-and-drop or a click-to-browse file pick.
+- The instant a file is picked or dropped the dialog **closes** and the
+  upload runs in the background via `runUpload(file, router)`. The user
+  can keep working — open the dialog again to start another upload,
+  navigate elsewhere, or just wait.
+- A single sticky **toast in the bottom-right** tracks the run end-to-end,
+  morphing through stages:
+  - "Preparing upload…" while `prepareUpload` mints the signed URL
+  - A live progress bar with `Uploading · NN%` while bytes stream
+  - "Finalizing — analysis is starting…" while `finalizeUpload` flips
+    the status
+  - A success toast with a "View" action that navigates to the detail
+    page (auto-dismisses after 8s)
+- Multiple uploads can run in parallel — each has its own toast id.
+- Aborts (network errors, fail to prepare/finalize) update the same
+  toast to an error state and call `cancelUpload` to remove orphans.
 
 ## See also
 
