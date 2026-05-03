@@ -295,28 +295,37 @@ The transcript pane becomes interactive without karaoke yet.
 Sentence-level is enough for the coaching use case. Word-level adds
 polish but jitter — only worth it if Phase 4's UX feels too coarse.
 
-## Open questions / decisions to make before coding
+## Resolved decisions
 
-1. **Keep global strengths/improvements?** See data-model section.
-   Lean: keep both.
-2. **How to label speakers?** Deepgram gives us speaker numbers (0, 1,
-   …). Do we always assume 0 = Rep, 1 = Customer? Or ask the user?
-   Or have GPT infer it from the transcript ("the first speaker
-   introduces themselves as the salesperson, so speaker 0 is Rep")?
-3. **Number of segments — 3–8 or different range?** 3–8 feels right
-   for typical 15–45 min calls; tight calls might want 2.
-4. **Segment cards location** — stacked below the overall feedback,
-   or side-by-side / tabbed with it? Stacked is simpler and doesn't
-   force a desktop-only layout.
-5. **Karaoke granularity** — sentence-only, or also word-level? Lean
-   sentence-only for Phase 4; defer word to Phase 5.
-6. **Auto-scroll behavior** — pause auto-scroll if the user manually
-   scrolls? For how long? Lean: 5 seconds of grace.
-7. **Re-running analysis** — should we add a "re-analyze" button so
-   coaches can pick up new segments after we improve the model?
-   Probably yes, but not in this PR.
-8. **Cost** — segmented analysis uses more output tokens. Roughly 2–3×
-   the current call. Worth it; let's not premature-optimize.
+1. **Keep global strengths/improvements** alongside per-segment ones.
+   Different cognitive views; salespeople want both.
+2. **Speaker labeling: GPT infers** which Deepgram speaker number is
+   the rep, returned as a `rep_speaker_number` field on the schema.
+   Falls back to `0` when the transcript is too sparse to tell.
+3. **3–8 segments** with `zod.refine` enforcing contiguous coverage.
+4. **Segment cards stacked** below the overall feedback. Simpler,
+   mobile-friendly.
+5. **Sentence-level karaoke** in Phase 4. Word-level deferred to
+   optional Phase 5.
+6. **Auto-scroll with 5-second grace** when the user scrolls
+   manually.
+7. **One LLM call**, not two — overall feedback + segments come back
+   in the same `withStructuredOutput` invocation. Cheaper, simpler,
+   and the model writing the overall summary benefits from having
+   walked through the segments.
+8. **Storage split: separate `conversation_transcripts` table** for
+   the bulky Deepgram timing data, joined to `conversations` by FK.
+   Keeps the main row small so realtime UPDATE events don't drag
+   ~150–250 KB per status flip.
+
+## Deferred — not in this branch
+
+- Re-analyze button.
+- Multi-call comparison.
+- Search across transcripts.
+- Sharing a specific timestamp / clip.
+- Chunking pipeline for >60-min calls (token budget is fine for
+  ≤60 min: ~25 k input + ~5 k output, well within 128 k).
 
 ## Risks
 
