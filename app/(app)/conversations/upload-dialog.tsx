@@ -4,7 +4,7 @@ import { useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type AppRouter = ReturnType<typeof useRouter>
-import { Loader2, Plus, UploadCloud } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Loader2, Plus, UploadCloud, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -168,7 +168,17 @@ async function runUpload(file: File, router: AppRouter) {
             toast.dismiss(toastId)
         } else {
             const message = err instanceof Error ? err.message : 'Upload failed.'
-            toast.error(message, { id: toastId })
+            toast.custom(
+                () => (
+                    <UploadResultToast
+                        fileName={file.name}
+                        kind="error"
+                        description={message}
+                        onDismiss={() => toast.dismiss(toastId)}
+                    />
+                ),
+                { id: toastId, duration: 8000 },
+            )
         }
         return
     }
@@ -182,19 +192,36 @@ async function runUpload(file: File, router: AppRouter) {
 
     const fin = await finalizeUpload({ conversationId: prep.conversationId, path: prep.path })
     if ('error' in fin) {
-        toast.error(fin.error, { id: toastId })
+        toast.custom(
+            () => (
+                <UploadResultToast
+                    fileName={file.name}
+                    kind="error"
+                    description={fin.error}
+                    onDismiss={() => toast.dismiss(toastId)}
+                />
+            ),
+            { id: toastId, duration: 8000 },
+        )
         return
     }
 
-    toast.success(`${file.name} uploaded`, {
-        id: toastId,
-        description: 'Analyzing in the background.',
-        action: {
-            label: 'View',
-            onClick: () => router.push(`/conversations/${prep.conversationId}`),
-        },
-        duration: 8000,
-    })
+    toast.custom(
+        () => (
+            <UploadResultToast
+                fileName={file.name}
+                kind="success"
+                description="Analyzing in the background."
+                actionLabel="View"
+                onAction={() => {
+                    router.push(`/conversations/${prep.conversationId}`)
+                    toast.dismiss(toastId)
+                }}
+                onDismiss={() => toast.dismiss(toastId)}
+            />
+        ),
+        { id: toastId, duration: 8000 },
+    )
 }
 
 function UploadProgressToast({
@@ -222,6 +249,55 @@ function UploadProgressToast({
             </div>
             <p className="text-muted-foreground text-xs">{label}</p>
             <Progress value={barValue} />
+        </div>
+    )
+}
+
+/**
+ * Same shell as `UploadProgressToast` so the success/error states slot in
+ * cleanly when the upload finishes — sonner's standard `toast.success` /
+ * `toast.error` layouts don't share the custom toast's container width and
+ * caused the View button to render in a separate floating box.
+ */
+function UploadResultToast({
+    fileName,
+    kind,
+    description,
+    actionLabel,
+    onAction,
+    onDismiss,
+}: {
+    fileName: string
+    kind: 'success' | 'error'
+    description: string
+    actionLabel?: string
+    onAction?: () => void
+    onDismiss: () => void
+}) {
+    const Icon = kind === 'success' ? CheckCircle2 : CircleAlert
+    const iconTone = kind === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+    return (
+        <div className="bg-popover text-popover-foreground flex w-full items-start gap-3 rounded-lg border px-4 py-3 shadow-md">
+            <Icon className={cn('mt-0.5 size-5 shrink-0', iconTone)} />
+            <div className="flex flex-1 flex-col gap-0.5">
+                <p className="text-sm font-medium">
+                    {kind === 'success' ? `${fileName} uploaded` : `${fileName} failed`}
+                </p>
+                <p className="text-muted-foreground text-xs">{description}</p>
+            </div>
+            {actionLabel && onAction && (
+                <Button size="sm" variant="outline" onClick={onAction}>
+                    {actionLabel}
+                </Button>
+            )}
+            <button
+                type="button"
+                onClick={onDismiss}
+                aria-label="Dismiss"
+                className="text-muted-foreground hover:text-foreground -mt-1 -mr-1 rounded p-1 transition-colors"
+            >
+                <X className="size-3.5" />
+            </button>
         </div>
     )
 }
