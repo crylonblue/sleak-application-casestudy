@@ -15,7 +15,6 @@ import { FeedbackView } from './feedback-view'
 import { ProcessingPanel } from './processing-panel'
 import { RecordingPlayer } from './recording-player'
 import { SegmentFeedback } from './segment-feedback'
-import { SegmentTimeline } from './segment-timeline'
 import { TranscriptView } from './transcript-view'
 
 function formatDuration(seconds: number | null) {
@@ -79,8 +78,7 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                                 <CardTitle className="text-base">Recording</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <RecordingPlayer src={audioUrl} />
-                                {feedback && <SegmentTimeline segments={feedback.segments} />}
+                                <RecordingPlayer src={audioUrl} segments={feedback?.segments} />
                             </CardContent>
                         </Card>
                     )}

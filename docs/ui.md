@@ -31,7 +31,6 @@ To add more primitives: `pnpm dlx shadcn@latest add <name>`.
 | Progress | upload-dialog progress bar, processing-panel upload phase |
 | Tabs | conversation detail page (Segments / Coach / Transcript) |
 | Accordion | per-segment feedback (single-open, follows playback) |
-| Slider | custom audio player scrubber |
 
 ## Playback store
 

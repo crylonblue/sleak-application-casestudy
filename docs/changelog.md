@@ -6,6 +6,30 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Merge segment timeline into the player scrubber
+
+The Recording card had two horizontal bars stacked on top of each other
+— a Slider for scrubbing and a separate `SegmentTimeline` strip for
+segment boundaries. Merged them into one custom `Scrubber` inside
+`RecordingPlayer`:
+
+- The track is rendered as proportional **segment blocks** (the active
+  segment block tinted primary, others muted).
+- Played portion is darkened on top of the segment colours.
+- Current position is a thin **vertical line**, not a thumb knob.
+- Hovering the track shows a faint guide line plus a tooltip that
+  reads `mm:ss · Segment title` for the spot under the cursor.
+- Click anywhere to seek; click-and-drag to scrub. Arrow keys move ±5s
+  when focused; space toggles play.
+
+`SegmentTimeline.tsx` is gone; the player now takes an optional
+`segments` prop. The Slider shadcn primitive is no longer used (file
+left in `components/ui/slider.tsx` for future).
+
+See [[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
 ## 2026-05-03 — Custom audio player to replace browser-default controls
 
 The native `<audio controls>` looked different in every browser and

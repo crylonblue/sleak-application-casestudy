@@ -165,10 +165,9 @@ The detail page renders them in the **Segments** tab as a single-open
 accordion. The currently-playing segment auto-expands; clicking another
 segment opens it and suspends auto-follow for 8 seconds so playback
 can't yank the user back mid-read. Each item has a *Jump to mm:ss*
-button that seeks the audio. A separate compact `SegmentTimeline` strip
-also lives inside the Recording card under the `<audio>` element —
-proportionally-sized blocks for each segment with a "Segment N of M ·
-Title" pill above; clicking a block seeks too.
+button that seeks the audio. The Recording card's scrubber doubles as a
+segment timeline — see the `RecordingPlayer` description in
+[[#detail-page--app-app-conversations-id-page-tsx]].
 
 ## Detail page — `app/(app)/conversations/[id]/page.tsx`
 
@@ -180,11 +179,12 @@ Renders, in order:
 - Title + status badge + uploaded timestamp + actions (rename, delete)
 - Failure alert (if `status='failed'`)
 - Recording card: `RecordingPlayer` (custom shadcn-styled controls — a
-  filled circular play/pause button, a Slider scrubber, and an
-  `mm:ss / mm:ss` time readout — driven by the playback store; the
-  native `<audio>` chrome is hidden) + `SegmentTimeline` strip
-  (clickable per-segment blocks). Stays visible above the tabs so the
-  user can scrub from any view.
+  filled circular play/pause button, a single merged scrubber whose
+  track is rendered as proportional segment blocks, a thin vertical
+  line at the current position (no thumb knob), a hover guide line +
+  tooltip showing `mm:ss · Segment title`, and an `mm:ss / mm:ss` time
+  readout). The native `<audio>` chrome is hidden. Stays visible above
+  the tabs so the user can scrub from any view.
 - `ProcessingPanel` (if still processing)
 - Tabs (only when `feedback` and `transcript_segments` are both ready):
   - **Segments** (default) — `SegmentFeedback` accordion. Single-open;
