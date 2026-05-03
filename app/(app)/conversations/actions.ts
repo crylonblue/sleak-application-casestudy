@@ -170,9 +170,14 @@ export async function finalizeUpload({
             // Persist the structured timing data in its own table so the
             // bulky paragraphs blob doesn't ride along on every realtime
             // UPDATE event for the parent row. See [[database#realtime]].
-            await supabase
+            // Surfacing this error matters: without timing data the
+            // detail page can't render the transcript or segments.
+            const { error: transcriptUpsertError } = await supabase
                 .from('conversation_transcripts')
                 .upsert({ conversation_id: conversationId, paragraphs: segments.paragraphs })
+            if (transcriptUpsertError) {
+                throw new Error(`Failed to persist transcript segments: ${transcriptUpsertError.message}`)
+            }
 
             await supabase
                 .from('conversations')

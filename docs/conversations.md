@@ -185,8 +185,7 @@ Renders, in order:
   non-empty; active card gets an accent ring, click-to-seek)
 - `TranscriptView` (interactive — sentence-level karaoke highlight,
   click-to-seek, auto-scroll with 5s manual-scroll grace) — if
-  `conversation_transcripts` exists for the row; falls back to the
-  flat `<pre>` view for older rows that pre-date Phase 1
+  `conversation_transcripts` exists for the row
 
 The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —
 if the schema ever changes, old rows degrade gracefully (feedback

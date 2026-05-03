@@ -77,10 +77,11 @@ function formatTimestampedTranscript(segments: TranscriptSegments): string {
  * Snap segment boundaries so they're guaranteed contiguous, even if the model
  * drifted by a fraction of a second. Cheap insurance — preserves the model's
  * intent (which segment the boundary belongs to) while making downstream code
- * (looking up the active segment by `currentTime`) bug-free.
+ * (looking up the active segment by `currentTime`) bug-free. Always called
+ * with a non-empty `segments` array because the zod schema enforces
+ * `.min(3)` upstream.
  */
 function repairSegmentBoundaries(feedback: Feedback, totalSeconds: number): Feedback {
-    if (!feedback.segments?.length) return feedback
     const sorted = [...feedback.segments].sort((a, b) => a.start_seconds - b.start_seconds)
     const repaired = sorted.map((s) => ({ ...s }))
     repaired[0].start_seconds = 0

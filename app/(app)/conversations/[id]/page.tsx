@@ -78,9 +78,7 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                             </CardHeader>
                             <CardContent>
                                 <RecordingPlayer src={audioUrl} />
-                                {feedback?.segments && feedback.segments.length > 0 && (
-                                    <SegmentTimeline segments={feedback.segments} />
-                                )}
+                                {feedback && <SegmentTimeline segments={feedback.segments} />}
                             </CardContent>
                         </Card>
                     )}
@@ -91,11 +89,9 @@ export default async function ConversationDetailPage({ params }: { params: Promi
 
                     {feedback && <FeedbackView feedback={feedback} />}
 
-                    {feedback && feedback.segments && feedback.segments.length > 0 && (
-                        <SegmentFeedback segments={feedback.segments} />
-                    )}
+                    {feedback && <SegmentFeedback segments={feedback.segments} />}
 
-                    {transcriptSegments ? (
+                    {transcriptSegments && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base">Transcript</CardTitle>
@@ -107,19 +103,6 @@ export default async function ConversationDetailPage({ params }: { params: Promi
                                 />
                             </CardContent>
                         </Card>
-                    ) : (
-                        conversation.transcript && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base">Transcript</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <pre className="text-muted-foreground max-h-96 overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                                        {conversation.transcript}
-                                    </pre>
-                                </CardContent>
-                            </Card>
-                        )
                     )}
                 </div>
             </main>

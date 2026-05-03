@@ -42,9 +42,11 @@ Data model:
 - `analyze.ts` now takes `{ segments, durationSeconds }` and feeds the
   model a sentence-level timestamped transcript.
 
-Old rows pre-dating these changes degrade gracefully: no
-`conversation_transcripts` row → flat `<pre>` transcript fallback;
-`analysis` without `segments` → no segment cards or timeline.
+Rows that pre-date this work and don't have a `conversation_transcripts`
+row or `analysis.segments` won't render the corresponding sections of
+the detail page — re-upload to refresh. We deliberately don't carry a
+backwards-compat fallback `<pre>` transcript view for old rows; the
+new shape is the only shape.
 
 See [[plans/segmented-call-analysis]] (the planning doc),
 [[ai-pipeline#feedback-schema--libaifeedback-schemats]],
