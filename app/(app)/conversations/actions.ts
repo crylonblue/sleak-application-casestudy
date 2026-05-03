@@ -8,7 +8,11 @@ import { createClient } from '@/lib/supabase/server'
 import { transcribeAudio } from '@/lib/ai/transcribe'
 import { analyzeTranscript } from '@/lib/ai/analyze'
 
-export type UploadResult = { error: string } | { conversationId: string } | undefined
+export type PrepareUploadResult =
+    | { error: string }
+    | { conversationId: string; uploadUrl: string; token: string; path: string }
+
+export type FinalizeUploadResult = { error: string } | { conversationId: string }
 
 const ALLOWED_MIME = new Set([
     'audio/mpeg',
@@ -42,40 +46,48 @@ function extensionFor(mime: string, filename: string) {
     return map[mime] ?? 'audio'
 }
 
-/**
- * Upload action — returns as soon as the file is in storage and the row is
- * created. Transcription + analysis run via `after()` so the response goes
- * back to the client immediately and the user can keep working (start
- * another upload, navigate away, etc). The list/detail pages subscribe to
- * Supabase Realtime to surface the post-response status updates.
- */
-export async function uploadConversation(_prev: UploadResult, formData: FormData): Promise<UploadResult> {
-    const user = await requireUser()
-    const file = formData.get('file')
-    const titleRaw = String(formData.get('title') ?? '').trim()
+function defaultTitleFromFilename(filename: string) {
+    return filename.replace(/\.[^.]+$/, '') || 'Untitled call'
+}
 
-    if (!(file instanceof File) || file.size === 0) {
+/**
+ * Step 1 of the upload flow.
+ *
+ * Validates metadata, inserts the conversation row in `pending` state, and
+ * mints a one-time-use signed upload URL pointed at
+ * `recordings/<user_id>/<conversation_id>.<ext>`. The browser uses the
+ * returned URL to PUT the audio bytes directly to Supabase Storage with
+ * native progress events — no audio bytes ever flow through the Next.js
+ * Server Action runtime, so the body-size caps are sidestepped entirely.
+ */
+export async function prepareUpload(metadata: {
+    fileName: string
+    mimeType: string
+    sizeBytes: number
+}): Promise<PrepareUploadResult> {
+    const user = await requireUser()
+    const { fileName, mimeType, sizeBytes } = metadata
+
+    if (!fileName || sizeBytes <= 0) {
         return { error: 'Please choose an audio file to upload.' }
     }
-    if (!ALLOWED_MIME.has(file.type)) {
-        return { error: `Unsupported file type "${file.type || 'unknown'}". Try MP3, M4A, WAV, OGG, or WEBM.` }
+    if (!ALLOWED_MIME.has(mimeType)) {
+        return { error: `Unsupported file type "${mimeType || 'unknown'}". Try MP3, M4A, WAV, OGG, or WEBM.` }
     }
-    if (file.size > MAX_BYTES) {
+    if (sizeBytes > MAX_BYTES) {
         return { error: 'That file is larger than 100 MB. Please upload a smaller recording.' }
     }
 
-    const title = titleRaw || file.name.replace(/\.[^.]+$/, '') || 'Untitled call'
     const supabase = await createClient()
 
-    // 1) Insert the row first so we have a stable id for the storage path.
     const { data: row, error: insertError } = await supabase
         .from('conversations')
         .insert({
             created_by: user.id,
-            title,
+            title: defaultTitleFromFilename(fileName),
             status: 'pending',
-            recording_mime: file.type,
-            recording_size_bytes: file.size,
+            recording_mime: mimeType,
+            recording_size_bytes: sizeBytes,
         })
         .select('id')
         .single()
@@ -85,21 +97,53 @@ export async function uploadConversation(_prev: UploadResult, formData: FormData
     }
 
     const conversationId = row.id as string
-    const ext = extensionFor(file.type, file.name)
+    const ext = extensionFor(mimeType, fileName)
     const path = `${user.id}/${conversationId}.${ext}`
-    const mimeType = file.type
 
-    // 2) Upload audio to the private storage bucket. This is the blocking
-    //    work the user has to wait on; everything after `after()` runs
-    //    post-response.
-    const arrayBuffer = await file.arrayBuffer()
-    const { error: uploadError } = await supabase.storage
+    const { data: signed, error: signedError } = await supabase.storage
         .from('recordings')
-        .upload(path, arrayBuffer, { contentType: mimeType, upsert: false })
+        .createSignedUploadUrl(path)
 
-    if (uploadError) {
+    if (signedError || !signed) {
         await supabase.from('conversations').delete().eq('id', conversationId)
-        return { error: `Upload failed: ${uploadError.message}` }
+        return { error: signedError?.message ?? 'Could not generate upload URL.' }
+    }
+
+    return {
+        conversationId,
+        uploadUrl: signed.signedUrl,
+        token: signed.token,
+        path,
+    }
+}
+
+/**
+ * Step 2 of the upload flow. Called by the browser once the PUT to the
+ * signed URL has completed.
+ *
+ * Records the storage path on the row, flips status to `transcribing`,
+ * and schedules the rest of the pipeline via `after()`. The transcribe +
+ * analyze + title-update work all runs after the response is sent.
+ */
+export async function finalizeUpload({
+    conversationId,
+    path,
+}: {
+    conversationId: string
+    path: string
+}): Promise<FinalizeUploadResult> {
+    const user = await requireUser()
+    const supabase = await createClient()
+
+    const { data: row, error: rowError } = await supabase
+        .from('conversations')
+        .select('id, title, recording_mime')
+        .eq('id', conversationId)
+        .eq('created_by', user.id)
+        .maybeSingle()
+
+    if (rowError || !row) {
+        return { error: 'Conversation not found.' }
     }
 
     await supabase
@@ -107,12 +151,20 @@ export async function uploadConversation(_prev: UploadResult, formData: FormData
         .update({ recording_path: path, status: 'transcribing' })
         .eq('id', conversationId)
 
-    // 3) Schedule transcription + analysis to run after the response is
-    //    sent. The arrayBuffer stays in the closure (fine for MVP); for a
-    //    leaner footprint we'd download it back from storage instead.
+    const filenameDefaultTitle = row.title // captured before the user could rename
+    const mimeType = row.recording_mime ?? 'application/octet-stream'
+
     after(async () => {
         try {
-            const audio = Buffer.from(arrayBuffer)
+            const { data: blob, error: downloadError } = await supabase.storage
+                .from('recordings')
+                .download(path)
+
+            if (downloadError || !blob) {
+                throw new Error(downloadError?.message ?? 'Failed to download uploaded file.')
+            }
+
+            const audio = Buffer.from(await blob.arrayBuffer())
             const { transcript, durationSeconds } = await transcribeAudio(audio, mimeType)
 
             await supabase
@@ -126,6 +178,17 @@ export async function uploadConversation(_prev: UploadResult, formData: FormData
                 .from('conversations')
                 .update({ analysis, status: 'ready', error: null })
                 .eq('id', conversationId)
+
+            // Conditionally adopt the AI-generated title — only if the title
+            // still equals the filename-derived default (i.e. the user hasn't
+            // renamed in the meantime).
+            if (analysis.title) {
+                await supabase
+                    .from('conversations')
+                    .update({ title: analysis.title })
+                    .eq('id', conversationId)
+                    .eq('title', filenameDefaultTitle)
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error'
             await supabase
@@ -137,6 +200,33 @@ export async function uploadConversation(_prev: UploadResult, formData: FormData
 
     revalidatePath('/conversations')
     return { conversationId }
+}
+
+/**
+ * Best-effort cleanup if the browser-side upload aborts or fails after
+ * `prepareUpload`. Removes the partially uploaded object (if any) and
+ * deletes the row so the user doesn't accumulate ghost entries.
+ */
+export async function cancelUpload({
+    conversationId,
+    path,
+}: {
+    conversationId: string
+    path?: string
+}) {
+    const user = await requireUser()
+    const supabase = await createClient()
+
+    if (path) {
+        try {
+            await supabase.storage.from('recordings').remove([path])
+        } catch {
+            // ignore — the object may not exist if the upload never started
+        }
+    }
+
+    await supabase.from('conversations').delete().eq('id', conversationId).eq('created_by', user.id)
+    revalidatePath('/conversations')
 }
 
 export async function renameConversation(id: string, formData: FormData) {

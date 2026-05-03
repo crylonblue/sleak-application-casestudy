@@ -6,6 +6,37 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Direct upload to Storage with progress bar + AI-generated title
+
+The upload no longer flows through the Next.js Server Action runtime.
+The browser PUTs audio bytes directly to a signed Supabase Storage URL
+with `xhr.upload.onprogress` driving a real progress bar in the dialog.
+Three actions orchestrate the dance: `prepareUpload` (insert row + mint
+URL), `finalizeUpload` (flip to `transcribing` + schedule pipeline via
+`after()`), and `cancelUpload` (cleanup on abort).
+
+The title input is gone from the upload dialog. The analyze step now
+returns a `title` field on `feedbackSchema`; the row is updated to that
+value with a `where title = <filename_default>` predicate so user
+renames always win. Existing rename action stays untouched.
+
+Side effects:
+
+- New shadcn `Progress` component.
+- `feedbackSchema` gained a required `title` string. Old rows whose
+  `analysis` lacks `title` now fail `safeParse` on the detail page →
+  feedback section hides for those rows; transcript still shows. Wipe
+  local rows or re-run analysis if you care.
+- The body-size knobs in `next.config.ts` are no longer load-bearing
+  for the audio path (kept for any future small-file Server Actions).
+
+See [[decisions#direct-upload-via-signed-url]],
+[[decisions#ai-generated-crm-style-title]],
+[[conversations#upload-flow]],
+[[ai-pipeline#feedback-schema--libaifeedback-schemats]].
+
+---
+
 ## 2026-05-03 — Background pipeline + realtime status updates
 
 The upload action no longer blocks the user on transcription + analysis.

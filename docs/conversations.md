@@ -4,56 +4,73 @@ The core feature: upload an audio file → get a structured coaching review.
 
 ## Upload flow
 
-`uploadConversation` in `app/(app)/conversations/actions.ts` splits into
-a fast foreground phase and a background phase:
+The browser uploads audio bytes directly to Supabase Storage via a
+short-lived signed URL — they never flow through the Next.js Server
+Action runtime. This sidesteps the Next 16 body-size caps entirely, gives
+us native browser progress events for the upload bar, and is the
+production-grade pattern documented in
+[[decisions#direct-upload-via-signed-url]].
+
+Three server actions in `app/(app)/conversations/actions.ts` orchestrate
+the dance, plus a fire-and-forget background phase scheduled with
+`after()`:
 
 ```
-[foreground — user waits on this]
-1. requireUser()                       — auth gate
-2. validate file (mime + size ≤ 100MB) — early rejection
-3. INSERT conversations (status='pending')
-   → returns id, used as the storage path
-4. upload to recordings/<user_id>/<id>.<ext>
-   → on failure, delete the row and return error
-5. UPDATE status='transcribing', recording_path=...
-6. revalidatePath('/conversations')
-7. return { conversationId }            — dialog closes, toast shown
-
-[background — runs after the response, scheduled with `after()`]
-8. transcribe (Deepgram)               — see [[ai-pipeline]]
-9. UPDATE status='analyzing', transcript, duration_seconds
-10. analyze (Azure OpenAI structured)  — see [[ai-pipeline]]
-11. UPDATE status='ready', analysis, error=null
-    (any thrown error → status='failed', error=message)
+[client]                                     [server]
+  │
+  │  prepareUpload({ name, mime, size })  ─►  validate (mime, size ≤ 100 MB)
+  │                                           INSERT conversations
+  │                                             status='pending', title=<filename>,
+  │                                             recording_mime, recording_size_bytes
+  │                                           createSignedUploadUrl(recordings/<user>/<id>.<ext>)
+  │  ◄──────── { conversationId, uploadUrl, path }
+  │
+  │  XHR PUT bytes ─► uploadUrl                       (browser progress events)
+  │      │
+  │      └─ on abort/error ► cancelUpload(...)  ─►  remove storage object + delete row
+  │
+  │  finalizeUpload({ conversationId, path }) ─►  UPDATE status='transcribing',
+  │                                                       recording_path
+  │                                              after(() => {
+  │                                                download blob from storage
+  │                                                transcribeAudio(...)
+  │                                                UPDATE status='analyzing',
+  │                                                       transcript, duration
+  │                                                analyzeTranscript(...)
+  │                                                UPDATE status='ready', analysis
+  │                                                UPDATE title=analysis.title
+  │                                                  WHERE title=<filename default>
+  │                                              })
+  │  ◄─── { conversationId }
+  │
+  └─► toast "Upload complete — analyzing in background"
 ```
 
-The user only blocks on steps 1–7 (typically a few seconds while the file
-streams to storage). Steps 8–11 run via `after()` from `next/server`
-*after* the action's response is sent — the user is free to start
-another upload, navigate elsewhere, or close the dialog. List and detail
-pages update in realtime as the background updates land — see
-[[#realtime-status-updates]] below and [[decisions#background-pipeline-via-after-plus-supabase-realtime]].
+`after()` from `next/server` lets the response go back the moment the row
+is in `transcribing` state — the user is free to start another upload,
+navigate elsewhere, or close the dialog. List and detail pages pick up
+status changes via the realtime subscription described below.
 
-### Body size limit
+## AI-generated title
 
-The audio file is sent through the Next.js Server Action runtime. Two
-separate body caps need to be lifted from their defaults to allow real
-audio uploads — both are configured in `next.config.ts`:
+When the user uploads, the row's title starts as the filename minus its
+extension (e.g. `recording-2024-11-23.mp3` → `recording-2024-11-23`).
+This is just a placeholder so the row has *something* to display while
+analysis runs.
 
-| Setting | Default | Set to | Why |
-|---|---|---|---|
-| `experimental.proxyClientMaxBodySize` | 10 MB | `100mb` | Cap on the proxy/middleware buffer. Defaults truncate the multipart stream → "Unexpected end of form". |
-| `experimental.serverActions.bodySizeLimit` | 1 MB | `100mb` | Server Action body cap. Below this, the action fails with "Body exceeded 1 MB limit". |
+The analyze step ([[ai-pipeline]]) returns a `title` field on the
+`feedbackSchema` — a 5–9 word CRM-style label like *"Discovery call with
+Acme — pricing pushback"*. After `analysis` lands, we issue a conditional
+update:
 
-Both caps must live **under `experimental`** for the Next 16.0.7 runtime
-config schema to accept them — the type defs expose them at top level too,
-but the runtime rejects that placement with "Unrecognized key in object".
+```sql
+update conversations set title = <ai_title>
+where id = <id> and title = <filename_default>
+```
 
-Both match the action's own `MAX_BYTES = 100 MB` validation, so the
-three limits stay in sync. See
-[[decisions#server-actions-body-size-limit-raised-to-100mb]] for the
-tradeoff and the production-grade alternative (signed direct upload
-to Supabase Storage, bypassing the Next runtime entirely).
+If the user renamed the row in the meantime (via the rename dialog), the
+`title = <filename_default>` predicate fails and the AI title is
+discarded — user input always wins. No flag column needed.
 
 ## Status state machine
 
@@ -63,9 +80,11 @@ pending → transcribing → analyzing → ready
    └────────────┴────────────┴──→ failed (error column populated)
 ```
 
-Status badges live in `components/ui/status-badge.tsx`. Anything in the
-"processing" set (`pending`, `transcribing`, `analyzing`) shows a spinner;
-`isProcessing(status)` is exported for callers that want to render a
+`pending` corresponds to the window between `prepareUpload` returning
+and `finalizeUpload` being called — the bytes are streaming. Status
+badges live in `components/ui/status-badge.tsx`; anything in the
+"processing" set (`pending`, `transcribing`, `analyzing`) shows a
+spinner. `isProcessing(status)` is exported for callers that want a
 "still working" affordance.
 
 ## Realtime status updates
@@ -73,13 +92,14 @@ Status badges live in `components/ui/status-badge.tsx`. Anything in the
 `components/realtime/conversations-realtime.tsx` is a tiny client
 component mounted once in `app/(app)/layout.tsx`. It subscribes to
 `postgres_changes` on `public.conversations` filtered by
-`created_by=eq.<user_id>` and calls `router.refresh()` (debounced ~250ms)
-whenever a row changes. Server components re-render with the latest data
-without a full reload.
+`created_by=eq.<user_id>` and calls `router.refresh()` (debounced
+~250ms) whenever a row changes. Server components re-render with the
+latest data without a full reload.
 
 This is what makes the background pipeline visible: the user uploads, the
 dialog closes, the new row shows up with `status='transcribing'`, and the
-badge transitions through `analyzing` → `ready` (or `failed`) on its own.
+badge transitions through `analyzing` → `ready` (or `failed`) on its
+own. The AI title appears as part of the final `ready` transition.
 
 Realtime requires the `conversations` table to be added to
 `supabase_realtime` and to have `replica identity full` — both done in a
@@ -88,8 +108,9 @@ migration. See [[database#realtime]].
 ## List page — `app/(app)/conversations/page.tsx`
 
 Server component that calls `getOwnConversations()` ([[database]]) and
-renders a shadcn `Table` with title / status / duration / uploaded-at, plus
-an `UploadDialog`. Empty state shows the same dialog as the only CTA.
+renders a shadcn `Table` with title / status / duration / uploaded-at,
+plus an `UploadDialog`. Empty state shows the same dialog as the only
+CTA.
 
 ## Detail page — `app/(app)/conversations/[id]/page.tsx`
 
@@ -105,9 +126,9 @@ Renders, in order:
 - `FeedbackView` (if `analysis` parses successfully)
 - Transcript panel (if transcript exists)
 
-The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` — if
-the schema ever changes, old rows degrade gracefully (feedback hidden,
-transcript still shown).
+The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —
+if the schema ever changes, old rows degrade gracefully (feedback
+hidden, transcript still shown).
 
 The detail page does not have its own polling component — updates flow
 through the realtime subscription mounted at the layout level.
@@ -118,26 +139,32 @@ Both live in `conversation-actions.tsx` (client) calling
 `renameConversation` / `deleteConversation` (server) from
 `conversations/actions.ts`.
 
-`deleteConversation` is two-step: remove the storage object first, then the
-row. The row removal also cascades from `auth.users`, but a manual storage
-remove is needed because storage isn't tied to the row by FK.
+`deleteConversation` is two-step: remove the storage object first, then
+the row. The row removal also cascades from `auth.users`, but a manual
+storage remove is needed because storage isn't tied to the row by FK.
 
 ## Upload dialog UX
 
 `upload-dialog.tsx` (client component, on the list page).
 
-- File input + optional title input
-- Submit blocks while the bytes stream to storage (typically a few
-  seconds), then the dialog closes
-- A success toast appears with a "View" action that navigates to the
-  detail page; staying on the list lets the user start another upload
-  immediately
-- Errors stay visible inside the dialog (and as a toast) so the user
-  can correct and retry without losing context
+- File input only — no title input. The AI fills that in after analysis;
+  user can rename anytime via the existing rename action.
+- Submit goes through the three-step flow above. The dialog shows:
+  - "Preparing upload…" while `prepareUpload` runs
+  - A real progress bar (with uploaded / total MB and percentage) driven
+    by `xhr.upload.onprogress` while bytes stream to Storage
+  - "Finalizing — analysis is starting…" while `finalizeUpload` runs
+  - On success, dialog closes and a toast appears with a "View" action
+    that navigates to the detail page
+- "Cancel" during upload aborts the XHR and calls `cancelUpload` to
+  remove the partial object and the row, leaving no orphans.
+- Closing the dialog by clicking outside or pressing Esc is blocked
+  while the upload is in-flight, so the user doesn't accidentally
+  abandon work in a way that costs storage.
 
 ## See also
 
-- [[ai-pipeline]] — the actual transcription + analysis
+- [[ai-pipeline]] — transcription, analysis, feedback schema (incl. `title`)
 - [[database]] — schema + RLS + realtime publication
 - [[ui]] — components used here
-- [[decisions]] — background pipeline + realtime rationale
+- [[decisions]] — direct upload, background pipeline, AI title rationale

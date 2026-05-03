@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, UploadCloud } from 'lucide-react'
 import { toast } from 'sonner'
@@ -17,35 +17,116 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { uploadConversation, type UploadResult } from './actions'
+import { Progress } from '@/components/ui/progress'
+import { cancelUpload, finalizeUpload, prepareUpload } from './actions'
+
+type UploadState =
+    | { kind: 'idle' }
+    | { kind: 'preparing' }
+    | { kind: 'uploading'; progress: number; conversationId: string; path: string }
+    | { kind: 'finalizing'; conversationId: string }
+    | { kind: 'error'; message: string }
+
+const isBusyState = (s: UploadState) =>
+    s.kind === 'preparing' || s.kind === 'uploading' || s.kind === 'finalizing'
 
 export function UploadDialog() {
     const router = useRouter()
     const [open, setOpen] = useState(false)
-    const [state, formAction, isPending] = useActionState<UploadResult, FormData>(uploadConversation, undefined)
+    const [file, setFile] = useState<File | null>(null)
+    const [state, setState] = useState<UploadState>({ kind: 'idle' })
+    const xhrRef = useRef<XMLHttpRequest | null>(null)
     const fileInputId = useId()
-    const titleInputId = useId()
 
-    // The action returns `{ conversationId }` on success and `{ error }` on
-    // failure. On success we close the dialog and surface a toast with a
-    // "View" action — the user can keep working (start another upload, browse
-    // around) while transcription and analysis run in the background. List
-    // and detail views update in realtime as the pipeline progresses.
+    const isBusy = isBusyState(state)
+
+    // Abort any in-flight upload when the component unmounts (e.g. user
+    // navigated away) so we don't leave a zombie XHR running.
     useEffect(() => {
-        if (!state) return
-        if ('error' in state) {
-            toast.error(state.error)
-        } else if ('conversationId' in state) {
-            const id = state.conversationId
-            toast.success('Recording uploaded — analyzing in the background.', {
-                action: { label: 'View', onClick: () => router.push(`/conversations/${id}`) },
+        return () => {
+            xhrRef.current?.abort()
+        }
+    }, [])
+
+    const reset = () => {
+        setFile(null)
+        setState({ kind: 'idle' })
+        xhrRef.current = null
+    }
+
+    const onSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!file || isBusy) return
+
+        setState({ kind: 'preparing' })
+        const prep = await prepareUpload({
+            fileName: file.name,
+            mimeType: file.type,
+            sizeBytes: file.size,
+        })
+        if ('error' in prep) {
+            setState({ kind: 'error', message: prep.error })
+            toast.error(prep.error)
+            return
+        }
+
+        const { conversationId, uploadUrl, path } = prep
+        setState({ kind: 'uploading', progress: 0, conversationId, path })
+
+        try {
+            await uploadWithProgress({
+                url: uploadUrl,
+                file,
+                xhrRef,
+                onProgress: (p) => setState({ kind: 'uploading', progress: p, conversationId, path }),
             })
+        } catch (err) {
+            const aborted = err instanceof Error && err.message === 'aborted'
+            await cancelUpload({ conversationId, path }).catch(() => {})
+            if (aborted) {
+                reset()
+                return
+            }
+            const message = err instanceof Error ? err.message : 'Upload failed.'
+            setState({ kind: 'error', message })
+            toast.error(message)
+            return
+        }
+
+        setState({ kind: 'finalizing', conversationId })
+        const fin = await finalizeUpload({ conversationId, path })
+        if ('error' in fin) {
+            setState({ kind: 'error', message: fin.error })
+            toast.error(fin.error)
+            return
+        }
+
+        toast.success('Upload complete — analyzing in the background.', {
+            action: { label: 'View', onClick: () => router.push(`/conversations/${conversationId}`) },
+        })
+        setOpen(false)
+        reset()
+    }
+
+    const onCancelClick = async () => {
+        if (state.kind === 'uploading') {
+            xhrRef.current?.abort() // triggers the catch in onSubmit which calls cancelUpload
+            return
+        }
+        if (!isBusy) {
             setOpen(false)
         }
-    }, [state, router])
+    }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog
+            open={open}
+            onOpenChange={(o) => {
+                if (!o && isBusy) return // block close while uploading
+                setOpen(o)
+                if (!o) reset()
+            }}
+        >
             <DialogTrigger asChild>
                 <Button>
                     <Plus />
@@ -56,49 +137,116 @@ export function UploadDialog() {
                 <DialogHeader>
                     <DialogTitle>Upload a sales call</DialogTitle>
                     <DialogDescription>
-                        We&apos;ll transcribe with Deepgram and generate coaching feedback with GPT-4.1. Once the file
-                        finishes uploading you can close this dialog and keep working — analysis runs in the background.
+                        We&apos;ll generate a title, transcript, and coaching feedback in the background. Once the
+                        upload finishes you can close this dialog and keep working.
                     </DialogDescription>
                 </DialogHeader>
-                <form action={formAction} className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-2">
-                        <Label htmlFor={titleInputId}>Title (optional)</Label>
-                        <Input
-                            id={titleInputId}
-                            name="title"
-                            placeholder="e.g. Acme Corp · discovery call"
-                            disabled={isPending}
-                        />
-                    </div>
+                <form onSubmit={onSubmit} className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
                         <Label htmlFor={fileInputId}>Recording</Label>
                         <Input
                             id={fileInputId}
-                            name="file"
                             type="file"
                             accept="audio/*"
                             required
-                            disabled={isPending}
+                            disabled={isBusy}
                             className="cursor-pointer"
+                            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                         />
                         <p className="text-muted-foreground text-xs">MP3, M4A, WAV, OGG, or WEBM · up to 100 MB</p>
                     </div>
-                    {state && 'error' in state && (
-                        <Alert variant="destructive">
-                            <AlertDescription>{state.error}</AlertDescription>
-                        </Alert>
-                    )}
+
+                    <UploadStatus state={state} fileSizeBytes={file?.size ?? 0} />
+
                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={onCancelClick}
+                            disabled={state.kind === 'preparing' || state.kind === 'finalizing'}
+                        >
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={isPending}>
+                        <Button type="submit" disabled={!file || isBusy}>
                             <UploadCloud />
-                            {isPending ? 'Uploading…' : 'Upload'}
+                            {state.kind === 'preparing' && 'Preparing…'}
+                            {state.kind === 'uploading' && `Uploading ${Math.round(state.progress * 100)}%`}
+                            {state.kind === 'finalizing' && 'Finalizing…'}
+                            {(state.kind === 'idle' || state.kind === 'error') && 'Upload'}
                         </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
         </Dialog>
     )
+}
+
+function UploadStatus({ state, fileSizeBytes }: { state: UploadState; fileSizeBytes: number }) {
+    if (state.kind === 'error') {
+        return (
+            <Alert variant="destructive">
+                <AlertDescription>{state.message}</AlertDescription>
+            </Alert>
+        )
+    }
+    if (state.kind === 'preparing') {
+        return <p className="text-muted-foreground text-sm">Preparing upload…</p>
+    }
+    if (state.kind === 'finalizing') {
+        return <p className="text-muted-foreground text-sm">Finalizing — analysis is starting…</p>
+    }
+    if (state.kind === 'uploading') {
+        const pct = Math.round(state.progress * 100)
+        const uploadedMb = (fileSizeBytes * state.progress) / (1024 * 1024)
+        const totalMb = fileSizeBytes / (1024 * 1024)
+        return (
+            <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Uploading…</span>
+                    <span className="text-muted-foreground tabular-nums">
+                        {uploadedMb.toFixed(1)} / {totalMb.toFixed(1)} MB · {pct}%
+                    </span>
+                </div>
+                <Progress value={pct} />
+            </div>
+        )
+    }
+    return null
+}
+
+function uploadWithProgress({
+    url,
+    file,
+    xhrRef,
+    onProgress,
+}: {
+    url: string
+    file: File
+    xhrRef: React.MutableRefObject<XMLHttpRequest | null>
+    onProgress: (progress: number) => void
+}): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhrRef.current = xhr
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) onProgress(e.loaded / e.total)
+        }
+        xhr.onload = () => {
+            xhrRef.current = null
+            if (xhr.status >= 200 && xhr.status < 300) resolve()
+            else reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText || ''}`.trim()))
+        }
+        xhr.onerror = () => {
+            xhrRef.current = null
+            reject(new Error('Upload failed (network error).'))
+        }
+        xhr.onabort = () => {
+            xhrRef.current = null
+            reject(new Error('aborted'))
+        }
+        xhr.open('PUT', url)
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+        xhr.send(file)
+    })
 }

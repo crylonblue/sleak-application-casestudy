@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
 export const feedbackSchema = z.object({
+    title: z
+        .string()
+        .describe(
+            'A concise 5–9 word title summarizing what the call was about, written like a CRM entry. ' +
+                'Lead with who and the topic. Examples: "Discovery call with Acme — pricing pushback", ' +
+                '"Renewal call with Globex — feature ask". No surrounding quotes.',
+        ),
     summary: z.string().describe('Two to three sentence summary of how the call went and what was discussed.'),
     overall_score: z
         .number()

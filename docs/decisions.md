@@ -5,6 +5,88 @@ reader might wonder "why was this done this way?".
 
 ---
 
+## Direct upload via signed URL
+
+**Decision:** The browser PUTs audio bytes directly to Supabase Storage
+via a one-time-use signed upload URL. Audio bytes never flow through
+the Next.js Server Action runtime.
+
+**Why:**
+
+1. **Real progress UX.** XHR `upload.onprogress` events give us an
+   accurate, byte-level progress bar in the upload dialog. Server
+   Actions over `fetch` don't expose upload progress at all.
+2. **No more body-cap whack-a-mole.** Without bytes in the Server
+   Action body, neither `experimental.proxyClientMaxBodySize` nor
+   `experimental.serverActions.bodySizeLimit` are involved in the
+   audio path. Future Next runtime caps that we don't know about can't
+   silently truncate uploads.
+3. **Production-grade footing.** This is the same pattern Vercel
+   recommends for "large uploads" (e.g. their Blob docs). A serverless
+   Server Action has function size limits (Vercel Hobby caps Server
+   Action bodies at 4.5 MB regardless of `bodySizeLimit`); direct
+   upload bypasses that cap.
+
+**How it's wired:**
+
+- `prepareUpload({ name, mime, size })` validates the metadata,
+  inserts the row in `pending` state, and calls
+  `supabase.storage.from('recordings').createSignedUploadUrl(path)` to
+  mint a short-lived URL.
+- The browser does an XHR `PUT` to that URL with the file body, with
+  `xhr.upload.onprogress` driving the progress bar.
+- `finalizeUpload({ conversationId, path })` flips the status to
+  `transcribing` and schedules the rest of the pipeline via
+  `after()`. The pipeline downloads the blob from storage rather than
+  holding it in memory.
+- `cancelUpload({ conversationId, path })` is called if the XHR aborts
+  or fails — removes the partial storage object and the row.
+
+**Costs / caveats:**
+
+- Three round-trips between browser and server per upload (prepare,
+  finalize; cancel only on failure) instead of one. Acceptable since
+  prepare and finalize are tiny JSON calls.
+- An orphan row exists between `prepareUpload` and `finalizeUpload`.
+  If the user closes the tab mid-upload without the cleanup running,
+  we leak a `pending` row. Realtime makes the orphan visible in the
+  list — manual delete works for now; a periodic sweep is the
+  long-term fix.
+- Storage RLS still gates uploads (`(storage.foldername(name))[1] =
+  auth.uid()::text`), so even the signed URL is bounded to the user's
+  prefix. Defense in depth.
+
+See [[conversations#upload-flow]].
+
+---
+
+## AI-generated CRM-style title
+
+**Decision:** The user no longer types a title at upload time. The
+analyze step returns a `title` field on `feedbackSchema`, which we
+conditionally adopt for the row.
+
+**Why:** Asking for a title before the user has even seen the
+transcript is friction *and* yields worse titles than the model
+produces. A short CRM-style description ("Discovery call with Acme —
+pricing pushback") is consistently more useful than what people would
+type into a hurried form.
+
+**How:** the row starts with `title = filename minus extension` as a
+placeholder during upload + analysis. After `analysis` lands, an
+update with `where title = <filename_default>` either succeeds (user
+hasn't renamed → AI title wins) or matches zero rows (user already
+renamed → their input wins). No flag column needed.
+
+**Cost / caveats:** if the user renames during the brief window between
+`finalizeUpload` and the analyze update, their rename wins — but if
+they rename to *exactly* the filename default they would lose that to
+the AI title. Edge case, accepted.
+
+See [[conversations#ai-generated-title]], [[ai-pipeline#feedback-schema--libaifeedback-schemats]].
+
+---
+
 ## Server Actions body size limit raised to 100 MB
 
 **Decision:** Set both `experimental.proxyClientMaxBodySize = '100mb'`
