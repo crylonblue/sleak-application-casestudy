@@ -6,6 +6,29 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Move proxy body cap under `experimental` (it was being silently rejected)
+
+Previous commit set `proxyClientMaxBodySize` at the top of
+`NextConfig`, where Next 16's type defs expose it but the runtime
+config schema rejects it with "Unrecognized key in object". The cap
+stayed at the 10 MB default and uploads kept failing with "Unexpected
+end of form". Moved both caps under `experimental` and confirmed the
+banner now shows `proxyClientMaxBodySize: "100mb"`. See
+[[decisions#server-actions-body-size-limit-raised-to-100mb]] and
+[[conversations#body-size-limit]].
+
+---
+
+## 2026-05-03 — Also raise proxy/middleware body cap to 100 MB
+
+After the previous bump to `experimental.serverActions.bodySizeLimit`,
+real uploads still failed with `Unexpected end of form`. Root cause: a
+*second* Next 16 body cap on the proxy/middleware
+(default 10 MB) was truncating the multipart stream before the Server
+Action saw it. Raised that to `100mb` too.
+
+---
+
 ## 2026-05-03 — Raise Server Actions body size limit to 100 MB
 
 Set `experimental.serverActions.bodySizeLimit = '100mb'` in
