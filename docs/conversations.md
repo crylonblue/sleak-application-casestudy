@@ -162,9 +162,11 @@ gaps/overlaps) and cover the whole call from 0 to total duration; the
 analyze step snaps fractional-second drift before persisting.
 
 The detail page renders them as stacked `SegmentCard`s under the overall
-feedback (see [[#detail-page--app-app-conversations-id-page-tsx]]).
-Phase 4 will add click-to-seek + an "active" state driven by the audio
-player's `currentTime`.
+feedback. The currently-playing segment gets an accent ring and badge
+fill; clicking any card seeks the audio to its start. A small
+`SegmentTimeline` strip lives inside the Recording card under the
+`<audio>` element — proportionally-sized blocks for each segment with
+a "Segment N of M · Title" pill above; clicking a block seeks too.
 
 ## Detail page — `app/(app)/conversations/[id]/page.tsx`
 
@@ -175,12 +177,16 @@ Renders, in order:
 
 - Title + status badge + uploaded timestamp + actions (rename, delete)
 - Failure alert (if `status='failed'`)
-- `RecordingPlayer` — audio element registered with the playback store
+- Recording card: `RecordingPlayer` (audio registered with playback store)
+  + `SegmentTimeline` strip (clickable per-segment blocks)
 - `ProcessingPanel` (if still processing)
 - `FeedbackView` (overall feedback — if `analysis` parses successfully)
-- `SegmentFeedback` (per-segment cards — if `analysis.segments` is non-empty)
-- `TranscriptView` (interactive — if `conversation_transcripts` exists for the row);
-  falls back to the flat `<pre>` view for older rows that pre-date Phase 1
+- `SegmentFeedback` (per-segment cards — if `analysis.segments` is
+  non-empty; active card gets an accent ring, click-to-seek)
+- `TranscriptView` (interactive — sentence-level karaoke highlight,
+  click-to-seek, auto-scroll with 5s manual-scroll grace) — if
+  `conversation_transcripts` exists for the row; falls back to the
+  flat `<pre>` view for older rows that pre-date Phase 1
 
 The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —
 if the schema ever changes, old rows degrade gracefully (feedback

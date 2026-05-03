@@ -6,6 +6,56 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Segmented call analysis + click-to-seek karaoke transcript
+
+Calls are now split by GPT into 3–8 logical segments (e.g. *Discovery
+questions*, *Pricing pushback*) with per-segment summaries, strengths,
+and improvements. The detail page renders:
+
+- A `SegmentTimeline` strip inside the Recording card — proportional
+  blocks per segment, click-to-seek, "Segment N of M · Title" pill
+  above showing the active one.
+- `SegmentFeedback` stacked cards under the overall feedback. The
+  currently-playing segment gets an accent ring; clicking any card
+  seeks to its start.
+- An interactive `TranscriptView` with paragraph-level Rep/Customer
+  speaker labels (driven by GPT-inferred `rep_speaker_number`),
+  per-sentence buttons that seek on click, sentence-level karaoke
+  highlighting that follows playback, and auto-scroll with a 5-second
+  manual-scroll grace period.
+
+All driven by a tiny module-level `playback-store` (same shape as the
+existing upload tracker) — components subscribe to `useCurrentTime()`
+and call `seekTo(seconds)` without any context plumbing.
+
+Data model:
+
+- New `conversation_transcripts(conversation_id PK, paragraphs jsonb)`
+  table for Deepgram's structured timing data, kept off the
+  `conversations` row so realtime UPDATE events don't drag ~150–250 KB
+  per status flip.
+- `feedbackSchema` gained `segments[]` (with min(3)/max(8) and
+  contiguous-coverage post-processing in `analyze.ts`),
+  `rep_speaker_number`, and per-segment `strengths`/`improvements`
+  arrays. Top-level `strengths`/`improvements` stay (top 1–3 across the
+  call).
+- `analyze.ts` now takes `{ segments, durationSeconds }` and feeds the
+  model a sentence-level timestamped transcript.
+
+Old rows pre-dating these changes degrade gracefully: no
+`conversation_transcripts` row → flat `<pre>` transcript fallback;
+`analysis` without `segments` → no segment cards or timeline.
+
+See [[plans/segmented-call-analysis]] (the planning doc),
+[[ai-pipeline#feedback-schema--libaifeedback-schemats]],
+[[ai-pipeline#analysis--libaianalyzets]],
+[[conversations#segments]],
+[[conversations#detail-page--app-app-conversations-id-page-tsx]],
+[[database#publicconversation_transcripts]],
+and [[ui#playback-store]].
+
+---
+
 ## 2026-05-03 — Surface upload progress on the detail page
 
 The detail page's `ProcessingPanel` now shows the byte-level upload

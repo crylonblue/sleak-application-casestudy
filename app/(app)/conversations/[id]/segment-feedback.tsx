@@ -1,4 +1,7 @@
+'use client'
+
 import { CheckCircle2, TriangleAlert } from 'lucide-react'
+import { seekTo, useCurrentTime } from '@/components/playback/playback-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { FeedbackSegment } from '@/lib/ai/feedback-schema'
@@ -15,19 +18,22 @@ function formatRange(start: number, end: number) {
 
 /**
  * Stacked per-segment feedback cards rendered below the overall feedback on
- * the detail page. For Phase 2 these are static — Phase 4 will hook the
- * playback context in to highlight the currently-playing segment and make
- * each card click-to-seek.
+ * the detail page. The currently-playing segment gets an accent ring; clicking
+ * any card seeks the audio to the segment's start.
  */
 export function SegmentFeedback({ segments }: { segments: FeedbackSegment[] }) {
+    const currentTime = useCurrentTime()
     if (!segments.length) return null
+    const activeIndex = segments.findIndex(
+        (s) => currentTime >= s.start_seconds && currentTime < s.end_seconds,
+    )
     return (
         <section className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold tracking-tight">Segments</h2>
             <ol className="flex flex-col gap-3">
                 {segments.map((seg, i) => (
                     <li key={i}>
-                        <SegmentCard index={i} segment={seg} />
+                        <SegmentCard index={i} segment={seg} isActive={i === activeIndex} />
                     </li>
                 ))}
             </ol>
@@ -35,12 +41,41 @@ export function SegmentFeedback({ segments }: { segments: FeedbackSegment[] }) {
     )
 }
 
-function SegmentCard({ index, segment }: { index: number; segment: FeedbackSegment }) {
+function SegmentCard({
+    index,
+    segment,
+    isActive,
+}: {
+    index: number
+    segment: FeedbackSegment
+    isActive: boolean
+}) {
     return (
-        <Card>
+        <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => seekTo(segment.start_seconds)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    seekTo(segment.start_seconds)
+                }
+            }}
+            className={cn(
+                'cursor-pointer transition-colors',
+                isActive
+                    ? 'ring-primary bg-primary/[0.03] ring-2'
+                    : 'hover:border-muted-foreground/30',
+            )}
+        >
             <CardHeader className="flex-row items-baseline justify-between gap-4 space-y-0">
                 <div className="flex items-baseline gap-3">
-                    <span className="bg-muted text-muted-foreground inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums">
+                    <span
+                        className={cn(
+                            'inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums',
+                            isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                        )}
+                    >
                         {index + 1}
                     </span>
                     <CardTitle className="text-base">{segment.title}</CardTitle>
@@ -92,7 +127,7 @@ function SegmentList({
                 {label}
             </div>
             {items.length === 0 ? (
-                <p className={cn('text-muted-foreground text-sm italic')}>{empty}</p>
+                <p className="text-muted-foreground text-sm italic">{empty}</p>
             ) : (
                 <ul className="flex flex-col gap-1.5 text-sm">
                     {items.map((item, i) => (
