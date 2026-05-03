@@ -86,7 +86,10 @@ function SegmentItem({
         <AccordionItem
             value={itemValue(index)}
             className={cn(
-                'rounded-lg border bg-card transition-colors',
+                // shadcn's default AccordionItem ships with `last:border-b-0`,
+                // which clipped the bottom border of the last card. The
+                // `last:border-b` here puts it back.
+                'rounded-lg border bg-card transition-colors last:border-b',
                 isActive && 'border-primary/40 bg-primary/[0.03]',
             )}
         >
