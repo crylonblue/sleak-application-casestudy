@@ -26,6 +26,16 @@ Steps 6–8 happen inline inside the server action. The user's form sits in
 its pending state for ~15–30s on a typical 2–3 minute call. See
 [[decisions]] for why this isn't a queue yet.
 
+### Body size limit
+
+The audio file is currently sent through the Next.js Server Action
+runtime, which defaults to a 1 MB request body cap. We raise it to
+**100 MB** (matching the action's own validation cap) via
+`experimental.serverActions.bodySizeLimit` in `next.config.ts`. See
+[[decisions#server-actions-body-size-limit-raised-to-100mb]] for the
+tradeoff and the production-grade alternative (signed direct upload
+to Supabase Storage, bypassing the Next runtime entirely).
+
 ## Status state machine
 
 ```
