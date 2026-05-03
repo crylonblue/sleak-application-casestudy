@@ -6,6 +6,19 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Raise Server Actions body size limit to 100 MB
+
+Set `experimental.serverActions.bodySizeLimit = '100mb'` in
+`next.config.ts`. The default 1 MB cap was rejecting real audio
+uploads through the `uploadConversation` server action. The new limit
+matches the action's own validation. See [[decisions#server-actions-body-size-limit-raised-to-100mb]]
+for the tradeoff and the future direct-upload refactor.
+
+**Note:** changing `next.config.ts` requires a full dev-server restart
+(`pnpm dev`); HMR doesn't pick up config changes.
+
+---
+
 ## 2026-05-03 — Wiki + house rules
 
 Bootstrapped this `docs/` directory and added a `CLAUDE.md` rule that

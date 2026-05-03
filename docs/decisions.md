@@ -5,6 +5,35 @@ reader might wonder "why was this done this way?".
 
 ---
 
+## Server Actions body size limit raised to 100 MB
+
+**Decision:** Set `experimental.serverActions.bodySizeLimit = '100mb'` in
+`next.config.ts` so audio uploads can flow through the server action.
+
+**Why:** Next.js caps Server Action request bodies at 1 MB by default. Our
+upload form sends the audio bytes as part of `FormData` to
+`uploadConversation`, so a typical 2–3 minute MP3 (~3–10 MB) blows the
+default. 100 MB matches the action's own `MAX_BYTES` validation, so the
+two limits stay in sync.
+
+**Cost:** every audio file is now buffered through the Next.js server
+process, which:
+- consumes server memory equal to the file size during the request
+- counts against function size/time limits on serverless platforms
+  (Vercel Hobby caps Server Action bodies at 4.5 MB regardless of this
+  setting; even Pro caps at 100 MB and may charge for the time)
+- doubles bandwidth (browser → Next → Supabase Storage)
+
+**Production-grade alternative (deferred):** generate a signed upload URL
+via a tiny server action, have the browser PUT the audio directly to
+Supabase Storage, then call a second server action that just inserts the
+row + kicks off transcription. Removes Next.js from the upload path
+entirely. Worth doing before deploying to a hosted environment.
+
+See [[conversations#body-size-limit]].
+
+---
+
 ## Inline AI pipeline (no queue)
 
 **Decision:** `uploadConversation` runs Deepgram → Azure OpenAI synchronously
