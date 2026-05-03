@@ -165,14 +165,32 @@ export async function finalizeUpload({
             }
 
             const audio = Buffer.from(await blob.arrayBuffer())
-            const { transcript, durationSeconds } = await transcribeAudio(audio, mimeType)
+            const { transcript, durationSeconds, segments } = await transcribeAudio(audio, mimeType)
+
+            // Persist the structured timing data in its own table so the
+            // bulky paragraphs blob doesn't ride along on every realtime
+            // UPDATE event for the parent row. See [[database#realtime]].
+            // Surfacing this error matters: without timing data the
+            // detail page can't render the transcript or segments.
+            const { error: transcriptUpsertError } = await supabase
+                .from('conversation_transcripts')
+                .upsert({ conversation_id: conversationId, paragraphs: segments.paragraphs })
+            if (transcriptUpsertError) {
+                throw new Error(`Failed to persist transcript segments: ${transcriptUpsertError.message}`)
+            }
 
             await supabase
                 .from('conversations')
                 .update({ transcript, duration_seconds: durationSeconds, status: 'analyzing' })
                 .eq('id', conversationId)
 
-            const analysis = await analyzeTranscript(transcript)
+            // Fall back to the last sentence's end if Deepgram didn't return
+            // a duration. analyzeTranscript needs a number for refining
+            // segment boundaries.
+            const lastEnd =
+                segments.paragraphs.at(-1)?.sentences.at(-1)?.end ?? 0
+            const totalSeconds = durationSeconds ?? lastEnd
+            const analysis = await analyzeTranscript({ segments, durationSeconds: totalSeconds })
 
             await supabase
                 .from('conversations')

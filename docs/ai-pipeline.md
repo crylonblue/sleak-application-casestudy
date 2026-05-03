@@ -26,10 +26,38 @@ const response = await client.listen.v1.media.transcribeFile(
 )
 ```
 
-Returns `{ transcript, durationSeconds }`. We prefer
-`paragraphs.transcript` (smart-formatted, with speaker breaks) over the raw
-`transcript` field. Throws if the response is empty or asynchronous (only
-synchronous transcription is wired up).
+Returns `{ transcript, durationSeconds, segments }`:
+
+- `transcript` — the smart-formatted flat string (display fallback,
+  also stored on `conversations.transcript`).
+- `durationSeconds` — total audio duration; used to validate segment
+  bounds and to render duration on the list page.
+- `segments` — the structured paragraphs/sentences/words timing data,
+  projected from Deepgram's response into our `TranscriptSegments`
+  shape:
+
+  ```ts
+  {
+    paragraphs: Array<{
+      speaker?: number
+      start: number
+      end: number
+      sentences: Array<{
+        text: string
+        start: number
+        end: number
+        words: Array<{ word, start, end, confidence? }>
+      }>
+    }>
+  }
+  ```
+
+  Words live under sentences (Deepgram returns them flat, we bucket
+  them by time range during projection). Persisted in
+  `public.conversation_transcripts` — see [[database]].
+
+Throws if the response is empty or asynchronous (only synchronous
+transcription is wired up).
 
 ### Why nova-3 + multi
 
@@ -40,37 +68,59 @@ display today but is cheap to leave on for future use.
 
 ## Analysis — `lib/ai/analyze.ts`
 
-Uses `@langchain/openai`'s `AzureChatOpenAI` with `withStructuredOutput` so
-the model returns a typed object that matches our zod schema. LangChain
-handles the function-calling plumbing.
+Uses `@langchain/openai`'s `AzureChatOpenAI` with `withStructuredOutput`
+so the model returns a typed object that matches our zod schema.
+LangChain handles the function-calling plumbing.
 
 ```
-const model = new AzureChatOpenAI({
-    azureOpenAIApiKey, azureOpenAIApiInstanceName,
-    azureOpenAIApiDeploymentName, azureOpenAIApiVersion,
-    temperature: 0.2,
-})
-const structured = model.withStructuredOutput(feedbackSchema, { name: 'sales_call_feedback' })
-const result = await structured.invoke([
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: `Transcript:\n\n${transcript}` },
-])
+analyzeTranscript({ segments, durationSeconds }) → Feedback
 ```
 
-Temperature is low so the same call gives roughly the same coaching twice.
-The model + deployment name are env-driven (currently GPT-4.1 on the
-`sleak-ai-assessment-resource` Azure instance).
+The user prompt feeds the model a sentence-level timestamped transcript
+plus the total duration:
+
+```
+Total call duration: 1487.3 seconds.
+
+Transcript (timestamps in seconds):
+[0.0–4.2] (speaker 0) Hi, thanks for joining today's call.
+[4.5–8.1] (speaker 1) Hi, glad to be here.
+…
+```
+
+Sentence granularity is deliberate — segment boundaries naturally fall
+at sentence ends, and including word-level data would 5–10× the input
+token count for no quality gain. Temperature is low (0.2) so the same
+call gives roughly the same coaching twice. The model + deployment name
+are env-driven (currently GPT-4.1 on the `sleak-ai-assessment-resource`
+Azure instance).
+
+Output is post-processed by `repairSegmentBoundaries` — it sorts
+segments by `start_seconds`, snaps the first to 0, snaps the last to
+`durationSeconds`, and propagates each segment's `end_seconds` to the
+next segment's `start_seconds`. Insurance against fractional-second
+drift in the model's output that would otherwise break downstream
+"which segment is at time X?" lookups.
 
 ## Feedback schema — `lib/ai/feedback-schema.ts`
 
 ```ts
 {
-  title: string,                     // 5-9 word CRM-style title
-  summary: string,                   // 2-3 sentence overview
-  overall_score: number,             // 0-10
-  strengths: { point, evidence }[],          // ≤ 5
-  improvements: { point, suggestion, evidence }[],  // ≤ 5
-  next_steps: string[],              // ≤ 5
+  title: string,                                    // 5-9 word CRM-style title
+  summary: string,                                  // 2-3 sentence overview
+  overall_score: number,                            // 0-10
+  rep_speaker_number: number,                       // which Deepgram speaker is the rep
+  strengths: { point, evidence }[],                 // ≤ 5  (top 1-3 across the call)
+  improvements: { point, suggestion, evidence }[],  // ≤ 5  (top 1-3 across the call)
+  next_steps: string[],                             // ≤ 5
+  segments: Array<{                                 // 3-8, contiguous, no gaps/overlaps
+    title: string,                                  // ≤ 5 words, sentence case
+    summary: string,                                // 1 sentence
+    start_seconds: number,
+    end_seconds: number,
+    strengths: string[],                            // ≤ 3, scoped to this range only
+    improvements: string[],                         // ≤ 3, scoped to this range only
+  }>,
 }
 ```
 
@@ -82,9 +132,14 @@ detail page renders evidence as a left-bordered italic blockquote.
 upload action conditionally adopts it (only if the user hasn't renamed
 since upload). See [[conversations#ai-generated-title]].
 
+`segments` and `rep_speaker_number` power the segmented coaching view
+and speaker labeling — see [[conversations#segments]].
+
 This shape is stored as the `analysis` jsonb column ([[database]]) and
 re-validated with `feedbackSchema.safeParse` when the detail page reads
-it.
+it. The model occasionally drifts segment boundaries by a fraction of a
+second; `analyze.ts` snaps them back so they're guaranteed contiguous
+before persisting.
 
 ## See also
 

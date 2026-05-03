@@ -6,6 +6,154 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Make the active segment block taller and darker
+
+The active segment used to be barely visible on the merged scrubber
+(`bg-primary/25` over `bg-primary/45` played overlay made the played
+portion dominate the active state). Restructured so the active segment
+renders as its own absolutely-positioned overlay between the base
+blocks and the played overlay:
+
+- Base track: uniform `h-1.5` blocks (clean borders, all aligned).
+- Active overlay: full-track-height (`h-4`), `bg-primary/55` — taller
+  and darker than anything else.
+- Played overlay: stays a thin `h-1.5` stripe through the centre, so
+  in the active region it shows a darker progress streak crossing
+  through the tall block.
+
+Effectively: the segment you're in jumps out as a tall dark slab; the
+played portion is visible as a streak through it.
+
+See [[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
+## 2026-05-03 — Merge segment timeline into the player scrubber
+
+The Recording card had two horizontal bars stacked on top of each other
+— a Slider for scrubbing and a separate `SegmentTimeline` strip for
+segment boundaries. Merged them into one custom `Scrubber` inside
+`RecordingPlayer`:
+
+- The track is rendered as proportional **segment blocks** (the active
+  segment block tinted primary, others muted).
+- Played portion is darkened on top of the segment colours.
+- Current position is a thin **vertical line**, not a thumb knob.
+- Hovering the track shows a faint guide line plus a tooltip that
+  reads `mm:ss · Segment title` for the spot under the cursor.
+- Click anywhere to seek; click-and-drag to scrub. Arrow keys move ±5s
+  when focused; space toggles play.
+
+`SegmentTimeline.tsx` is gone; the player now takes an optional
+`segments` prop. The Slider shadcn primitive is no longer used (file
+left in `components/ui/slider.tsx` for future).
+
+See [[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
+## 2026-05-03 — Custom audio player to replace browser-default controls
+
+The native `<audio controls>` looked different in every browser and
+clashed with the rest of the shadcn UI. Replaced with a small
+custom player:
+
+- A filled circular play/pause button (lucide `Play` / `Pause`).
+- A shadcn `Slider` scrubber that maps drag fraction to
+  `seekTo(fraction × duration)`.
+- An `mm:ss / mm:ss` time readout under the slider.
+- The `<audio>` element stays in the DOM with the same `registerAudio`
+  callback ref, just with `class="hidden"` so its native chrome
+  doesn't render.
+
+Required adding `togglePlay()` and `useDuration()` to the playback
+store (loadedmetadata + durationchange listeners now drive duration).
+The transcript pane, segment cards, and segment timeline already
+share that store, so they keep working unchanged.
+
+See [[ui#playback-store]] and
+[[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
+## 2026-05-03 — Detail page tabs + accordion segments + transcript scroll fix
+
+The detail page was getting crowded — overall coaching feedback, every
+segment expanded, and a long transcript all stacked vertically. Two
+shifts:
+
+- **Tabs** (`Segments` / `Coach` / `Transcript`) under a persistent
+  Recording card. The audio player + segment timeline stay visible from
+  any tab so scrubbing keeps working while reading the transcript or
+  coach view.
+- **Single-open accordion** for segments. The currently-playing segment
+  auto-expands; clicking another segment opens it and suspends
+  auto-follow for 8 seconds so playback can't yank the reader back. Each
+  panel has a *Jump to mm:ss* button.
+
+Also fixed a transcript scrolling bug: the auto-scroll's
+`scrollIntoView({ block: 'center' })` was bubbling out and nudging the
+page in some browsers. Replaced with manual `container.scrollTo` math so
+only the transcript box moves. Added `overscroll-contain` so wheel
+events at the edges of the box don't bubble to the page either.
+
+See [[conversations#detail-page--app-app-conversations-id-page-tsx]],
+[[conversations#segments]], and [[ui#components-in-use]].
+
+---
+
+## 2026-05-03 — Segmented call analysis + click-to-seek karaoke transcript
+
+Calls are now split by GPT into 3–8 logical segments (e.g. *Discovery
+questions*, *Pricing pushback*) with per-segment summaries, strengths,
+and improvements. The detail page renders:
+
+- A `SegmentTimeline` strip inside the Recording card — proportional
+  blocks per segment, click-to-seek, "Segment N of M · Title" pill
+  above showing the active one.
+- `SegmentFeedback` stacked cards under the overall feedback. The
+  currently-playing segment gets an accent ring; clicking any card
+  seeks to its start.
+- An interactive `TranscriptView` with paragraph-level Rep/Customer
+  speaker labels (driven by GPT-inferred `rep_speaker_number`),
+  per-sentence buttons that seek on click, sentence-level karaoke
+  highlighting that follows playback, and auto-scroll with a 5-second
+  manual-scroll grace period.
+
+All driven by a tiny module-level `playback-store` (same shape as the
+existing upload tracker) — components subscribe to `useCurrentTime()`
+and call `seekTo(seconds)` without any context plumbing.
+
+Data model:
+
+- New `conversation_transcripts(conversation_id PK, paragraphs jsonb)`
+  table for Deepgram's structured timing data, kept off the
+  `conversations` row so realtime UPDATE events don't drag ~150–250 KB
+  per status flip.
+- `feedbackSchema` gained `segments[]` (with min(3)/max(8) and
+  contiguous-coverage post-processing in `analyze.ts`),
+  `rep_speaker_number`, and per-segment `strengths`/`improvements`
+  arrays. Top-level `strengths`/`improvements` stay (top 1–3 across the
+  call).
+- `analyze.ts` now takes `{ segments, durationSeconds }` and feeds the
+  model a sentence-level timestamped transcript.
+
+Rows that pre-date this work and don't have a `conversation_transcripts`
+row or `analysis.segments` won't render the corresponding sections of
+the detail page — re-upload to refresh. We deliberately don't carry a
+backwards-compat fallback `<pre>` transcript view for old rows; the
+new shape is the only shape.
+
+See [[plans/segmented-call-analysis]] (the planning doc),
+[[ai-pipeline#feedback-schema--libaifeedback-schemats]],
+[[ai-pipeline#analysis--libaianalyzets]],
+[[conversations#segments]],
+[[conversations#detail-page--app-app-conversations-id-page-tsx]],
+[[database#publicconversation_transcripts]],
+and [[ui#playback-store]].
+
+---
+
 ## 2026-05-03 — Surface upload progress on the detail page
 
 The detail page's `ProcessingPanel` now shows the byte-level upload

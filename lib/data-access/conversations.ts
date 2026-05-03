@@ -3,6 +3,7 @@ import 'server-only'
 import { createClient } from '../supabase/server'
 import { requireUser } from './auth'
 import type { Feedback } from '../ai/feedback-schema'
+import type { TranscriptSegments } from '../ai/transcribe'
 
 export type ConversationStatus = 'pending' | 'transcribing' | 'analyzing' | 'ready' | 'failed'
 
@@ -81,3 +82,25 @@ export async function getRecordingSignedUrl(recordingPath: string | null): Promi
     if (error || !data) return null
     return data.signedUrl
 }
+
+/**
+ * Fetch Deepgram's structured timing data (paragraphs/sentences/words) for
+ * a conversation. Lives in `conversation_transcripts` so it doesn't bloat
+ * the realtime UPDATE payload on `conversations`. Returns `null` for rows
+ * that pre-date Phase 1 of the segmented-analysis work.
+ */
+export const getTranscriptSegments = cache(
+    async (conversationId: string): Promise<TranscriptSegments | null> => {
+        const user = await requireUser()
+        const supabase = await createClient()
+        const { data, error } = await supabase
+            .from('conversation_transcripts')
+            .select('paragraphs, conversations!inner(created_by)')
+            .eq('conversation_id', conversationId)
+            .eq('conversations.created_by', user.id)
+            .maybeSingle()
+
+        if (error || !data) return null
+        return { paragraphs: (data as { paragraphs: TranscriptSegments['paragraphs'] }).paragraphs }
+    },
+)

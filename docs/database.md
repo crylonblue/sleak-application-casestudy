@@ -10,6 +10,7 @@ Postgres via local Supabase. Schema is defined in versioned migrations under
 | `20260503123552_init_schema.sql` | conversations table, status enum, RLS, updated_at trigger |
 | `20260503123611_init_storage.sql` | private `recordings` bucket + path-prefix RLS |
 | `20260503141450_enable_realtime_conversations.sql` | adds `conversations` to `supabase_realtime` + `replica identity full` |
+| `20260503150748_add_conversation_transcripts.sql` | new `conversation_transcripts` table for Deepgram timing data |
 
 Apply with `supabase db reset` (rebuilds from scratch + runs migrations) or
 `supabase migration up` (applies new migrations on top).
@@ -75,6 +76,22 @@ RLS uses the first path segment as the ownership check:
 This means you can only read/write/delete files whose path starts with your
 own UUID — even if you somehow guessed another user's `conversation_id`,
 storage rejects you.
+
+## `public.conversation_transcripts`
+
+Deepgram's structured paragraph/sentence/word timing data, kept in a
+separate table from `conversations` so realtime UPDATE events on the
+parent row don't have to drag ~150–250 KB of timing data across the
+wire on every status flip.
+
+| Column | Type | Notes |
+|---|---|---|
+| `conversation_id` | `uuid` | PK + FK → `conversations.id` (cascade delete) |
+| `paragraphs` | `jsonb` | structured timing data (see [[ai-pipeline]] for the shape) |
+| `created_at` | `timestamptz` | default `now()` |
+
+RLS gates select/insert via the parent row's `created_by`. Inserted
+once during the transcribe step; never updated.
 
 ## Realtime
 

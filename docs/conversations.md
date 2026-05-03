@@ -149,6 +149,26 @@ renders a shadcn `Table` with title / status / duration / uploaded-at,
 plus an `UploadDialog`. Empty state shows the same dialog as the only
 CTA.
 
+## Segments
+
+Each call is split by GPT into 3–8 logical segments (e.g. *Introduction*,
+*Discovery questions*, *Pricing pushback*) with per-segment summaries,
+strengths, and improvements. See [[ai-pipeline#feedback-schema]] for the
+exact shape and [[ai-pipeline#analysis]] for how they're produced.
+
+Segments are AI-determined (not time-based) — the model picks
+boundaries where the topic actually changes. They're contiguous (no
+gaps/overlaps) and cover the whole call from 0 to total duration; the
+analyze step snaps fractional-second drift before persisting.
+
+The detail page renders them in the **Segments** tab as a single-open
+accordion. The currently-playing segment auto-expands; clicking another
+segment opens it and suspends auto-follow for 8 seconds so playback
+can't yank the user back mid-read. Each item has a *Jump to mm:ss*
+button that seeks the audio. The Recording card's scrubber doubles as a
+segment timeline — see the `RecordingPlayer` description in
+[[#detail-page--app-app-conversations-id-page-tsx]].
+
 ## Detail page — `app/(app)/conversations/[id]/page.tsx`
 
 Server component, `getOwnConversation(id)` for the row and
@@ -158,10 +178,26 @@ Renders, in order:
 
 - Title + status badge + uploaded timestamp + actions (rename, delete)
 - Failure alert (if `status='failed'`)
-- `<audio>` player (if recording is uploaded)
+- Recording card: `RecordingPlayer` (custom shadcn-styled controls — a
+  filled circular play/pause button, a single merged scrubber whose
+  track is rendered as proportional segment blocks. The currently
+  playing segment is rendered as a **taller, darker overlay** on top of
+  the uniform-height base blocks so it pops at a glance. A thin
+  vertical line marks the current position (no thumb knob); a hover
+  guide line + tooltip shows `mm:ss · Segment title`; and an
+  `mm:ss / mm:ss` time readout sits below). The native `<audio>` chrome
+  is hidden. Stays visible above the tabs so the user can scrub from
+  any view.
 - `ProcessingPanel` (if still processing)
-- `FeedbackView` (if `analysis` parses successfully)
-- Transcript panel (if transcript exists)
+- Tabs (only when `feedback` and `transcript_segments` are both ready):
+  - **Segments** (default) — `SegmentFeedback` accordion. Single-open;
+    follows playback automatically; user clicks suspend auto-follow for
+    8 seconds so they can read uninterrupted.
+  - **Coach** — `FeedbackView` (overall summary, score, top
+    strengths/improvements, next steps).
+  - **Transcript** — `TranscriptView` (sentence-level karaoke
+    highlight, click-to-seek, auto-scroll with 5s manual-scroll grace,
+    `overscroll-contain` so wheel events stay inside the box).
 
 The `analysis` jsonb is re-validated with `feedbackSchema.safeParse` —
 if the schema ever changes, old rows degrade gracefully (feedback
