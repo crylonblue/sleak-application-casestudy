@@ -6,6 +6,29 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Drag-and-drop upload + sticky progress toast + bolder active segment
+
+Three UX shifts on the upload + scrubber surface:
+
+- **Drag-and-drop dropzone.** The upload dialog is now a dashed-border
+  card; you can drag an audio file onto it or click to browse. The
+  separate file `Input` plus `Upload` button are gone.
+- **Dialog closes on file pick.** No more sitting in the dialog while
+  bytes stream — the moment a file is selected or dropped, the dialog
+  closes and a sticky toast in the bottom-right takes over. The toast
+  morphs through stages (preparing → uploading w/ progress bar →
+  finalizing → success w/ "View" action) under a stable id, so it's
+  one continuous notification, not a stream of new ones. Multiple
+  uploads can run in parallel, each with its own toast id.
+- **Active segment block is more opaque.** Bumped the active overlay
+  from `bg-primary/55` to `bg-primary/75` so the currently-playing
+  segment really pops against the inactive blocks.
+
+See [[conversations#upload-dialog-ux]] and
+[[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
 ## 2026-05-03 — Make the active segment block taller and darker
 
 The active segment used to be barely visible on the merged scrubber
