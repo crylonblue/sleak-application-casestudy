@@ -6,6 +6,22 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Surface upload progress on the detail page
+
+The detail page's `ProcessingPanel` now shows the byte-level upload
+progress bar when the row is in `status='pending'` and the local upload
+tracker has data for it, then transitions naturally to the existing
+`Transcribing…` / `Analyzing…` stages. Single rolling status surface.
+
+Implemented via a module-level `lib/uploads/upload-tracker.ts` (using
+`useSyncExternalStore`) that the upload dialog writes to and the panel
+reads from. Per-tab state, no new server surface needed.
+
+See [[decisions#upload-progress-shown-in-the-same-panel-as-processing-status]],
+[[conversations#unified-upload--processing-status]].
+
+---
+
 ## 2026-05-03 — Direct upload to Storage with progress bar + AI-generated title
 
 The upload no longer flows through the Next.js Server Action runtime.

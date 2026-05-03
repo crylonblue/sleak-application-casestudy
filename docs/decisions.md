@@ -5,6 +5,44 @@ reader might wonder "why was this done this way?".
 
 ---
 
+## Upload progress shown in the same panel as processing status
+
+**Decision:** The detail page's `ProcessingPanel` shows
+`Uploading 47%` → `Transcribing…` → `Analyzing…` in a single card. The
+byte-level upload progress is surfaced through a module-level tracker
+(`lib/uploads/upload-tracker.ts`) that the upload dialog writes to and
+the panel reads from via `useSyncExternalStore`.
+
+**Why:** The user wanted to see all stages of the pipeline in one
+place. Without this, upload progress only existed inside the upload
+dialog and disappeared the instant they closed it; the detail page
+just showed "Queued" during the upload window. Now if they click
+"View" mid-upload (or the dialog auto-closes on success and they
+navigate to the new row), they get the same rolling status.
+
+**Why a module-level tracker, not realtime / database state:**
+
+- Real upload progress only exists in the browser making the upload —
+  the server never sees the bytes (they go straight to Storage via
+  signed URL). Pushing progress through realtime would require the
+  client to chatter every 100ms back to the server, which is
+  expensive and adds latency for no benefit beyond cross-tab sync.
+- A module-level Map + `useSyncExternalStore` is ~30 lines, survives
+  client-side navigation in the same tab, and avoids any new server
+  surface.
+- Cross-tab sync isn't a real user need: the tab uploading the file
+  is also the tab the user is staring at. Other tabs see the
+  fallback "Recording uploaded — getting things ready…" message,
+  which is honest about not knowing the byte count.
+
+**Cost / caveats:** Per-tab state means a hard reload mid-upload (rare
+— and the XHR is canceled by the reload anyway) loses the progress
+display. The fallback message kicks in. Acceptable.
+
+See [[conversations#unified-upload--processing-status]].
+
+---
+
 ## Direct upload via signed URL
 
 **Decision:** The browser PUTs audio bytes directly to Supabase Storage

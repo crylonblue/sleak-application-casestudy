@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
+import { clearUploadProgress, setUploadProgress } from '@/lib/uploads/upload-tracker'
 import { cancelUpload, finalizeUpload, prepareUpload } from './actions'
 
 type UploadState =
@@ -72,16 +73,26 @@ export function UploadDialog() {
 
         const { conversationId, uploadUrl, path } = prep
         setState({ kind: 'uploading', progress: 0, conversationId, path })
+        setUploadProgress({ conversationId, progress: 0, fileSizeBytes: file.size, fileName: file.name })
 
         try {
             await uploadWithProgress({
                 url: uploadUrl,
                 file,
                 xhrRef,
-                onProgress: (p) => setState({ kind: 'uploading', progress: p, conversationId, path }),
+                onProgress: (p) => {
+                    setState({ kind: 'uploading', progress: p, conversationId, path })
+                    setUploadProgress({
+                        conversationId,
+                        progress: p,
+                        fileSizeBytes: file.size,
+                        fileName: file.name,
+                    })
+                },
             })
         } catch (err) {
             const aborted = err instanceof Error && err.message === 'aborted'
+            clearUploadProgress(conversationId)
             await cancelUpload({ conversationId, path }).catch(() => {})
             if (aborted) {
                 reset()
@@ -95,6 +106,10 @@ export function UploadDialog() {
 
         setState({ kind: 'finalizing', conversationId })
         const fin = await finalizeUpload({ conversationId, path })
+        // Clear the upload tracker now that the bytes are server-side. The
+        // detail page will fall through to the "Recording uploaded — getting
+        // things ready…" message until status flips to transcribing.
+        clearUploadProgress(conversationId)
         if ('error' in fin) {
             setState({ kind: 'error', message: fin.error })
             toast.error(fin.error)

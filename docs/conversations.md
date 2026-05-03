@@ -87,6 +87,43 @@ badges live in `components/ui/status-badge.tsx`; anything in the
 spinner. `isProcessing(status)` is exported for callers that want a
 "still working" affordance.
 
+## Unified upload + processing status
+
+Browser-side upload progress and server-side pipeline status surface
+through the same `ProcessingPanel` on the detail page so the user sees
+a single continuous progression:
+
+```
+Uploading 47% (12.4 / 26.3 MB)
+        │
+        ▼
+Recording uploaded — getting things ready…  (status='pending', no local upload)
+        │
+        ▼
+Transcribing your call with Deepgram…       (status='transcribing')
+        │
+        ▼
+Generating coaching feedback with GPT-4.1…  (status='analyzing')
+        │
+        ▼
+[FeedbackView]                              (status='ready')
+```
+
+The upload dialog publishes byte-level progress to a tiny module-level
+tracker (`lib/uploads/upload-tracker.ts`, `useSyncExternalStore`-based).
+`ProcessingPanel` is a client component that reads from the tracker via
+`useUploadProgress(conversationId)`:
+
+- If `status='pending'` **and** there's tracker data for this id (i.e.
+  the upload dialog in this same tab is uploading bytes), it renders
+  the byte-level progress bar with file name + MB counter.
+- Otherwise it falls through to the textual stage messages.
+
+The tracker is per-tab, module-scoped state — it survives client-side
+navigation between routes but doesn't sync across tabs. A different tab
+landing on the detail page during the pending window sees the fallback
+"Recording uploaded — getting things ready…" message instead.
+
 ## Realtime status updates
 
 `components/realtime/conversations-realtime.tsx` is a tiny client
