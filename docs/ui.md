@@ -31,6 +31,7 @@ To add more primitives: `pnpm dlx shadcn@latest add <name>`.
 | Progress | upload-dialog progress bar, processing-panel upload phase |
 | Tabs | conversation detail page (Segments / Coach / Transcript) |
 | Accordion | per-segment feedback (single-open, follows playback) |
+| Slider | custom audio player scrubber |
 
 ## Playback store
 
@@ -41,10 +42,13 @@ play-pause state to anything that subscribes via `useCurrentTime()` /
 `useIsPlaying()`. Components that want to scrub call `seekTo(seconds)`.
 
 The detail page mounts a single `<audio ref={registerAudio}/>` inside
-`RecordingPlayer`. The transcript view, segment cards, and (in Phase 4)
-the segment timeline all read from this store without any
-context/provider plumbing — keeping them as ordinary client components
-that can be used à la carte.
+`RecordingPlayer` (with the native chrome hidden — we render our own
+play/pause + scrubber + time readout for cross-browser consistency).
+The transcript view, segment cards, segment timeline, and the player
+itself all read from this store via `useCurrentTime()`,
+`useDuration()`, `useIsPlaying()` and call `seekTo(seconds)` /
+`togglePlay()` — no context/provider plumbing, so each component stays
+ordinary and à la carte.
 
 ## Layout shell
 

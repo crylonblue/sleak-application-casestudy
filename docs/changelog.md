@@ -6,6 +6,30 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Custom audio player to replace browser-default controls
+
+The native `<audio controls>` looked different in every browser and
+clashed with the rest of the shadcn UI. Replaced with a small
+custom player:
+
+- A filled circular play/pause button (lucide `Play` / `Pause`).
+- A shadcn `Slider` scrubber that maps drag fraction to
+  `seekTo(fraction × duration)`.
+- An `mm:ss / mm:ss` time readout under the slider.
+- The `<audio>` element stays in the DOM with the same `registerAudio`
+  callback ref, just with `class="hidden"` so its native chrome
+  doesn't render.
+
+Required adding `togglePlay()` and `useDuration()` to the playback
+store (loadedmetadata + durationchange listeners now drive duration).
+The transcript pane, segment cards, and segment timeline already
+share that store, so they keep working unchanged.
+
+See [[ui#playback-store]] and
+[[conversations#detail-page--app-app-conversations-id-page-tsx]].
+
+---
+
 ## 2026-05-03 — Detail page tabs + accordion segments + transcript scroll fix
 
 The detail page was getting crowded — overall coaching feedback, every

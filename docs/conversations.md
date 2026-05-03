@@ -179,9 +179,12 @@ Renders, in order:
 
 - Title + status badge + uploaded timestamp + actions (rename, delete)
 - Failure alert (if `status='failed'`)
-- Recording card: `RecordingPlayer` (audio registered with playback
-  store) + `SegmentTimeline` strip (clickable per-segment blocks). Stays
-  visible above the tabs so the user can scrub from any view.
+- Recording card: `RecordingPlayer` (custom shadcn-styled controls — a
+  filled circular play/pause button, a Slider scrubber, and an
+  `mm:ss / mm:ss` time readout — driven by the playback store; the
+  native `<audio>` chrome is hidden) + `SegmentTimeline` strip
+  (clickable per-segment blocks). Stays visible above the tabs so the
+  user can scrub from any view.
 - `ProcessingPanel` (if still processing)
 - Tabs (only when `feedback` and `transcript_segments` are both ready):
   - **Segments** (default) — `SegmentFeedback` accordion. Single-open;
