@@ -7,14 +7,23 @@ reader might wonder "why was this done this way?".
 
 ## Server Actions body size limit raised to 100 MB
 
-**Decision:** Set `experimental.serverActions.bodySizeLimit = '100mb'` in
-`next.config.ts` so audio uploads can flow through the server action.
+**Decision:** Set both `proxyClientMaxBodySize = '100mb'` (top-level) and
+`experimental.serverActions.bodySizeLimit = '100mb'` in `next.config.ts`
+so audio uploads can flow through the server action.
 
-**Why:** Next.js caps Server Action request bodies at 1 MB by default. Our
-upload form sends the audio bytes as part of `FormData` to
-`uploadConversation`, so a typical 2–3 minute MP3 (~3–10 MB) blows the
-default. 100 MB matches the action's own `MAX_BYTES` validation, so the
-two limits stay in sync.
+**Why:** Next.js 16 has *two* request-body caps stacked in front of a
+Server Action:
+
+1. The proxy/middleware default of 10 MB (`proxyClientMaxBodySize`) —
+   truncates the body before it even reaches the action, manifesting
+   as a multipart "Unexpected end of form" parse error.
+2. The Server Action default of 1 MB (`experimental.serverActions.bodySizeLimit`) —
+   raises a clean "Body exceeded 1 MB limit" error.
+
+Both must be raised, and they must match the action's own `MAX_BYTES`
+validation so the three limits stay in sync. We hit (2) first; (1)
+surfaced after raising (2). The three-limit ladder is unfortunate but
+that's the Next 16 surface area today.
 
 **Cost:** every audio file is now buffered through the Next.js server
 process, which:

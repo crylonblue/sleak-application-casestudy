@@ -28,10 +28,17 @@ its pending state for ~15–30s on a typical 2–3 minute call. See
 
 ### Body size limit
 
-The audio file is currently sent through the Next.js Server Action
-runtime, which defaults to a 1 MB request body cap. We raise it to
-**100 MB** (matching the action's own validation cap) via
-`experimental.serverActions.bodySizeLimit` in `next.config.ts`. See
+The audio file is sent through the Next.js Server Action runtime. Two
+separate body caps need to be lifted from their defaults to allow real
+audio uploads — both are configured in `next.config.ts`:
+
+| Setting | Default | Set to | Why |
+|---|---|---|---|
+| `proxyClientMaxBodySize` | 10 MB | `100mb` | Cap on the proxy/middleware buffer. Defaults truncate the multipart stream → "Unexpected end of form". |
+| `experimental.serverActions.bodySizeLimit` | 1 MB | `100mb` | Server Action body cap. Below this, the action fails with "Body exceeded 1 MB limit". |
+
+Both match the action's own `MAX_BYTES = 100 MB` validation, so the
+three limits stay in sync. See
 [[decisions#server-actions-body-size-limit-raised-to-100mb]] for the
 tradeoff and the production-grade alternative (signed direct upload
 to Supabase Storage, bypassing the Next runtime entirely).

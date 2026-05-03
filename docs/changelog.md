@@ -6,6 +6,18 @@ architectural. Link to the docs note that captures the resulting state.
 
 ---
 
+## 2026-05-03 — Also raise proxy/middleware body cap to 100 MB
+
+After the previous bump to `experimental.serverActions.bodySizeLimit`,
+real uploads still failed with `Unexpected end of form`. Root cause: a
+*second* Next 16 body cap on the proxy/middleware
+(`proxyClientMaxBodySize`, default 10 MB) was truncating the multipart
+stream before the Server Action saw it. Raised that to `100mb` too. See
+[[decisions#server-actions-body-size-limit-raised-to-100mb]] and
+[[conversations#body-size-limit]].
+
+---
+
 ## 2026-05-03 — Raise Server Actions body size limit to 100 MB
 
 Set `experimental.serverActions.bodySizeLimit = '100mb'` in
