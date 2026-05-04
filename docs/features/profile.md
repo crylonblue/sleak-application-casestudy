@@ -32,6 +32,13 @@ two helpers from `lib/data-access/profile.ts`:
 
 The dropdown gains a *Profile* item that links to `/profile`.
 
+## Used by the AI pipeline
+
+The uploader's `full_name` and `company_name` are also fed to Deepgram
+as `keyterm` entries during transcription so the rep's name and
+company come through correctly in the transcript. See
+[[ai-pipeline#keyterms]].
+
 ## Row guarantees
 
 Because of the `auth.users` insert trigger, a profile row exists for

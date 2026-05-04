@@ -13,6 +13,10 @@ For implementation history, read `git log`.
   New `/profile` page lets the user edit those fields. The sidebar's
   `NavUser` now shows the full name (with email as fallback) and
   links to the profile page. See [[profile]] and [[profile-table]].
+- **Profile data fed to Deepgram as keyterms.** The uploader's
+  `full_name` + `company_name` are passed as Deepgram's `keyterm`
+  parameter (Nova-3 only) so proper names come through correctly in
+  the transcript. Easy to extend later. See [[ai-pipeline#keyterms]].
 - **Conversations FK swapped to profiles.**
   `conversations.created_by` now references `public.profiles.id`
   instead of `auth.users.id`. UUIDs are unchanged; the constraint

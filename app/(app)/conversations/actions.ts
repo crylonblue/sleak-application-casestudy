@@ -4,6 +4,7 @@ import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/data-access/auth'
+import { getCurrentProfile, type Profile } from '@/lib/data-access/profile'
 import { createClient } from '@/lib/supabase/server'
 import { transcribeAudio } from '@/lib/ai/transcribe'
 import { analyzeTranscript } from '@/lib/ai/analyze'
@@ -48,6 +49,22 @@ function extensionFor(mime: string, filename: string) {
 
 function defaultTitleFromFilename(filename: string) {
     return filename.replace(/\.[^.]+$/, '') || 'Untitled call'
+}
+
+/**
+ * Domain-specific terms to feed Deepgram via the `keyterm` parameter
+ * (Nova-3 only, ≤ 100 entries) so they come through correctly in the
+ * transcript. Today: just the uploader's full name + company. Easy to
+ * extend later (frequent contact names, product names, common jargon
+ * from the user's vertical, …).
+ */
+function buildKeyterms(profile: Profile): string[] {
+    const terms: string[] = []
+    const name = profile.full_name?.trim()
+    if (name) terms.push(name)
+    const company = profile.company_name?.trim()
+    if (company) terms.push(company)
+    return terms
 }
 
 /**
@@ -154,6 +171,12 @@ export async function finalizeUpload({
     const filenameDefaultTitle = row.title // captured before the user could rename
     const mimeType = row.recording_mime ?? 'application/octet-stream'
 
+    // Pre-compute Deepgram keyterms from the uploader's profile so proper
+    // names (the rep's name, their company) come through correctly in the
+    // transcript. Captured here, used inside `after()` below.
+    const profile = await getCurrentProfile()
+    const keyterms = buildKeyterms(profile)
+
     after(async () => {
         try {
             const { data: blob, error: downloadError } = await supabase.storage
@@ -165,7 +188,9 @@ export async function finalizeUpload({
             }
 
             const audio = Buffer.from(await blob.arrayBuffer())
-            const { transcript, durationSeconds, segments } = await transcribeAudio(audio, mimeType)
+            const { transcript, durationSeconds, segments } = await transcribeAudio(audio, mimeType, {
+                keyterms,
+            })
 
             // Persist the structured timing data in its own table so the
             // bulky paragraphs blob doesn't ride along on every realtime
