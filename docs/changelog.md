@@ -13,6 +13,12 @@ For implementation history, read `git log`.
   New `/profile` page lets the user edit those fields. The sidebar's
   `NavUser` now shows the full name (with email as fallback) and
   links to the profile page. See [[profile]] and [[profile-table]].
+- **Conversations FK swapped to profiles.**
+  `conversations.created_by` now references `public.profiles.id`
+  instead of `auth.users.id`. UUIDs are unchanged; the constraint
+  swap unlocks PostgREST embeds and keeps future joins/RLS predicates
+  inside the public schema. Cascade behaviour preserved end-to-end.
+  See [[profile-table]] and [[database]].
 
 ---
 

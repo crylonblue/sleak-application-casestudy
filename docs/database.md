@@ -11,7 +11,7 @@ One row per uploaded sales call. Owner-only RLS keyed on
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` | PK |
-| `created_by` | `uuid` | FK → `auth.users.id` (cascade) |
+| `created_by` | `uuid` | FK → `public.profiles.id` (cascade) |
 | `title` | `text` | filename default; AI overwrites if user hasn't renamed (see [[ai-title]]) |
 | `recording_path` | `text \| null` | object key in the `recordings` bucket |
 | `recording_mime` | `text \| null` | |
@@ -76,7 +76,8 @@ supabase/migrations/
 ├── *_init_storage.sql                    recordings bucket + path-prefix RLS
 ├── *_enable_realtime_conversations.sql   adds to publication + replica identity full
 ├── *_add_conversation_transcripts.sql    timing-data table
-└── *_add_profiles.sql                    profiles table + auth-trigger + backfill
+├── *_add_profiles.sql                    profiles table + auth-trigger + backfill
+└── *_conversations_fk_profiles.sql       repoint conversations.created_by FK to profiles
 ```
 
 `supabase migration up` applies pending; `supabase db reset` rebuilds

@@ -22,6 +22,15 @@ matching profile row. The signed-up user has no session yet so the
 trigger needs the elevated privilege to bypass RLS for that single
 insert. After that the row is owner-only.
 
+**Downstream FKs point at profiles, not `auth.users`.**
+`conversations.created_by` references `public.profiles.id` rather than
+`auth.users.id`. The UUID values are identical (the trigger keeps them
+in sync), but the constraint pointing at the public table means
+PostgREST embeds (`select(*, profiles(full_name, …))`) work without
+reaching into the auth schema, and future RLS predicates / joins that
+involve the profile don't have to bridge schemas. Cascade behaviour is
+preserved end-to-end (auth.users → profiles → conversations).
+
 **Cost:** one extra table + one extra query on the detail page (the
 sidebar's NavUser already needs the profile, so the cost is ~zero in
 practice — `cache()` makes it free for additional callers in the same
