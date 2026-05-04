@@ -40,6 +40,7 @@ Mapping (keep this current):
 |---|---|
 | `supabase/migrations/*` or schema-related code | `docs/database.md` |
 | `app/auth/*`, `lib/data-access/auth.ts`, `lib/supabase/*` | `docs/auth.md` |
+| `app/(app)/profile/*`, `lib/data-access/profile.ts` | `docs/features/profile.md` |
 | `lib/ai/*` (Deepgram, Azure OpenAI, feedback schema) | `docs/ai-pipeline.md` |
 | `app/(app)/conversations/*`, upload flow / dialog / actions | `docs/features/upload.md` |
 | `components/playback/*`, recording player / scrubber | `docs/features/playback.md` |

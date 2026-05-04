@@ -6,6 +6,16 @@ For implementation history, read `git log`.
 
 ---
 
+## 2026-05-04
+
+- **User profiles.** New `public.profiles` table (`full_name`,
+  `company_name`) auto-populated by an `auth.users` insert trigger.
+  New `/profile` page lets the user edit those fields. The sidebar's
+  `NavUser` now shows the full name (with email as fallback) and
+  links to the profile page. See [[profile]] and [[profile-table]].
+
+---
+
 ## 2026-05-03
 
 - **Drag-and-drop upload + sticky progress toast.** Single dropzone

@@ -27,6 +27,27 @@ In the `supabase_realtime` publication with `replica identity full` so
 postgres_changes UPDATEs carry `created_by` for the per-user filter.
 See [[realtime]] (the realtime client decision).
 
+## `public.profiles`
+
+App-domain user data, kept separate from `auth.users` so the app
+schema doesn't reach into Supabase's auth contract. One row per
+auth user, kept in sync via a trigger. See [[profile-table]].
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK + FK → `auth.users.id` (cascade) |
+| `full_name` | `text \| null` | user-editable |
+| `company_name` | `text \| null` | user-editable |
+| `created_at`, `updated_at` | `timestamptz` | trigger keeps `updated_at` current |
+
+Owner-only RLS keyed on `auth.uid() = id`.
+
+A `security definer` trigger `on_auth_user_created` fires
+`public.handle_new_user()` after every `auth.users` insert, which
+inserts the matching profile row (RLS doesn't apply during signup
+because the user has no session yet — security definer bypasses it).
+Existing users are backfilled by the migration.
+
 ## `public.conversation_transcripts`
 
 Deepgram's structured paragraph/sentence/word timing data.
@@ -54,7 +75,8 @@ supabase/migrations/
 ├── *_init_schema.sql                     conversations + RLS + updated_at trigger
 ├── *_init_storage.sql                    recordings bucket + path-prefix RLS
 ├── *_enable_realtime_conversations.sql   adds to publication + replica identity full
-└── *_add_conversation_transcripts.sql    timing-data table
+├── *_add_conversation_transcripts.sql    timing-data table
+└── *_add_profiles.sql                    profiles table + auth-trigger + backfill
 ```
 
 `supabase migration up` applies pending; `supabase db reset` rebuilds
