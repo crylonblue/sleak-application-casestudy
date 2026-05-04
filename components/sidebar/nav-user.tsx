@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LogOut, MoreVertical } from 'lucide-react'
+import { LogOut, MoreVertical, UserCog } from 'lucide-react'
 import { signOut } from '@/app/auth/actions'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -12,11 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { getCurrentUser } from '@/lib/data-access/auth'
-
-function initialsFromEmail(email: string) {
-    const local = email.split('@')[0] ?? ''
-    return (local.slice(0, 2) || '??').toUpperCase()
-}
+import { getCurrentProfile, profileDisplayName, profileInitials } from '@/lib/data-access/profile'
 
 export async function NavUser() {
     const user = await getCurrentUser()
@@ -33,8 +29,11 @@ export async function NavUser() {
         )
     }
 
-    const email = user.email ?? 'unknown'
-    const initials = initialsFromEmail(email)
+    const profile = await getCurrentProfile()
+    const email = user.email ?? null
+    const displayName = profileDisplayName(profile, email)
+    const initials = profileInitials(profile, email)
+    const subtitle = profile.full_name ? (profile.company_name ?? email ?? '') : 'Signed in'
 
     return (
         <SidebarMenu>
@@ -49,8 +48,8 @@ export async function NavUser() {
                                 <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                             </Avatar>
                             <div className="grid flex-1 text-left text-sm leading-tight">
-                                <span className="truncate font-medium">{email}</span>
-                                <span className="text-muted-foreground truncate text-xs">Signed in</span>
+                                <span className="truncate font-medium">{displayName}</span>
+                                <span className="text-muted-foreground truncate text-xs">{subtitle}</span>
                             </div>
                             <MoreVertical className="ml-auto size-4" />
                         </SidebarMenuButton>
@@ -67,10 +66,20 @@ export async function NavUser() {
                                     <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                                 </Avatar>
                                 <div className="grid flex-1 text-left text-sm leading-tight">
-                                    <span className="truncate font-medium">{email}</span>
+                                    <span className="truncate font-medium">{displayName}</span>
+                                    {email && (
+                                        <span className="text-muted-foreground truncate text-xs">{email}</span>
+                                    )}
                                 </div>
                             </div>
                         </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                            <Link href="/profile" className="cursor-pointer">
+                                <UserCog />
+                                Profile
+                            </Link>
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <form action={signOut}>
                             <DropdownMenuItem asChild>

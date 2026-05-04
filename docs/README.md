@@ -27,6 +27,7 @@ Living documentation. Notes are small and cross-link Obsidian-style with
 - [[playback]] — custom player and merged segment scrubber
 - [[segments]] — per-segment AI feedback (accordion)
 - [[transcript]] — interactive transcript with karaoke + click-to-seek
+- [[profile]] — user profile (full name, company)
 
 ### Decisions
 

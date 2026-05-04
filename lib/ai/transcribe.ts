@@ -47,7 +47,21 @@ function deepgram() {
     return cachedClient
 }
 
-export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<TranscriptionResult> {
+export type TranscribeOptions = {
+    /**
+     * Domain-specific terms to boost during recognition (proper names,
+     * brands, jargon). Maps to Deepgram's `keyterm` parameter — Nova-3
+     * only, up to 100 entries. We pass the rep's name + company from
+     * the profile so they come through correctly in the transcript.
+     */
+    keyterms?: string[]
+}
+
+export async function transcribeAudio(
+    audio: Buffer,
+    mimeType: string,
+    options: TranscribeOptions = {},
+): Promise<TranscriptionResult> {
     const client = deepgram()
     const response = await client.listen.v1.media.transcribeFile(
         { data: audio, contentType: mimeType, filename: 'recording' },
@@ -58,6 +72,7 @@ export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<
             diarize: true,
             paragraphs: true,
             language: 'multi',
+            ...(options.keyterms && options.keyterms.length > 0 ? { keyterm: options.keyterms } : {}),
         },
     )
 

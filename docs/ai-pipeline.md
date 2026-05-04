@@ -13,7 +13,8 @@ The pipeline runs in the **background** of `finalizeUpload` via
 ## Transcription — `lib/ai/transcribe.ts`
 
 `@deepgram/sdk` v5, `nova-3` model, `smart_format`, `punctuate`,
-`diarize`, `paragraphs`, `language: 'multi'`.
+`diarize`, `paragraphs`, `language: 'multi'`. Optionally
+`keyterm: string[]` — see [[#keyterms]] below.
 
 Returns `{ transcript, durationSeconds, segments }`:
 
@@ -39,6 +40,18 @@ Returns `{ transcript, durationSeconds, segments }`:
   Words live under sentences (Deepgram returns them flat — we bucket
   them by time range). Persisted in `public.conversation_transcripts`
   ([[database]]).
+
+### Keyterms
+
+`transcribeAudio(audio, mimeType, { keyterms })` accepts an optional
+array of domain-specific terms. They map to Deepgram's `keyterm`
+parameter — Nova-3 only, up to 100 entries — which boosts those terms
+during recognition so proper names and brands come through correctly.
+
+`finalizeUpload` builds the keyterms list from the uploading user's
+profile via `buildKeyterms(profile)`: today that's `full_name` +
+`company_name`. Easy to extend later (frequent contact names, product
+names, vertical-specific jargon).
 
 ## Analysis — `lib/ai/analyze.ts`
 

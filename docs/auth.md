@@ -37,6 +37,19 @@ auth cookie on every request via `lib/supabase/proxy.ts:updateSession`.
   valid branch (e.g. the auth pages themselves).
 - `requireUser()` — cached `User`, redirects to `/auth/login` otherwise.
 
+## Profile auto-create on signup
+
+Every `auth.users` insert fires a `security definer` trigger that
+creates the matching `public.profiles` row (see [[database]] +
+[[profile-table]]). The signed-up user has no app session at the
+moment the row hits `auth.users`, so the trigger uses the elevated
+privilege to bypass RLS for that single insert. From then on, the
+profile is owner-only via RLS like everything else.
+
+The signup action itself (`app/auth/actions.ts`) doesn't have to know
+about this — it just calls `supabase.auth.signUp` and the trigger does
+the rest.
+
 ## Local quirk
 
 `enable_confirmations = false` for email auth in `supabase/config.toml`
